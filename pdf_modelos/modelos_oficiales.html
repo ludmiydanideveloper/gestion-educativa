@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Modelos Oficiales de Impresión PDF • EdTech SGE</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap');
+    :root {
+      --primary: #1E40AF;
+      --secondary: #3B82F6;
+      --dark: #0F172A;
+      --light: #F8FAFC;
+    }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: #E2E8F0;
+      margin: 0;
+      padding: 40px 20px;
+      color: var(--dark);
+    }
+    .header {
+      text-align: center;
+      max-width: 900px;
+      margin: 0 auto 36px auto;
+      background: white;
+      padding: 30px;
+      border-radius: 20px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--primary);
+    }
+    .header p {
+      color: #64748B;
+      margin: 10px 0 0 0;
+      font-size: 15px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .card {
+      background: white;
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border: 1px solid #CBD5E1;
+      transition: transform 0.2s;
+    }
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: var(--secondary);
+    }
+    .card h3 {
+      margin: 0 0 8px 0;
+      font-size: 19px;
+      color: var(--dark);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      font-size: 11px;
+      background: #DBEAFE;
+      color: var(--primary);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 700;
+    }
+    .desc {
+      font-size: 13px;
+      color: #475569;
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+    .btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: var(--secondary);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>🏫 INSTITUTO ADVENTISTA BARADERO - EDTECH SGE</h1>
+    <p>Centro Oficial de Generación y Previsualización de <b>Modelos PDF</b> (RITE Provincial • Desgloses por Materia • Trayectoria Histórica)</p>
+  </div>
+
+  <div class="grid">
+    
+    <!-- MODELO 1 -->
+    <div class="card">
+      <div>
+        <h3>📋 Reporte de Faltas por Materia <span class="badge">NUEVO</span></h3>
+        <p class="desc">Planilla oficial para Administradores y Docentes con el desglose integral de inasistencias por asignatura, porcentaje de presentismo RITE, alertas de riesgo libre y firmas institucionales.</p>
+      </div>
+      <button class="btn" onclick="imprimirModeloFaltasMateria()">🖨️ Generar PDF Modelo</button>
+    </div>
+
+    <!-- MODELO 2 -->
+    <div class="card">
+      <div>
+        <h3>🎓 Boletín Completo de Toda la Trayectoria</h3>
+        <p class="desc">Reporte analítico y curricular histórico (1°, 2° y 3° año). Incluye promedios generales consolidados, acreditaciones por ciclo, materias en Comisión RITE y calificaciones históricas acumuladas.</p>
+      </div>
+      <button class="btn" onclick="imprimirModeloTrayectoria()">🖨️ Generar PDF Modelo</button>
+    </div>
+
+    <!-- MODELO 3 -->
+    <div class="card">
+      <div>
+        <h3>📊 Boletín RITE de Calificaciones Actuales</h3>
+        <p class="desc">Boletín cuatrimestral por áreas y materias (TEA, TEP, TED) del ciclo lectivo en curso con observaciones del preceptor e instancias de evaluación provincial.</p>
+      </div>
+      <button class="btn" onclick="imprimirModeloBoletin()">🖨️ Generar PDF Modelo</button>
+    </div>
+
+    <!-- MODELO 4 -->
+    <div class="card">
+      <div>
+        <h3>📅 Planilla de Asistencia General Acumulada</h3>
+        <p class="desc">Historial detallado de inasistencias, llegadas tarde y cómputos de ausentismo justificados / injustificados día por día para control del Gabinete y Preceptoría.</p>
+      </div>
+      <button class="btn" onclick="imprimirModeloAsistencia()">🖨️ Generar PDF Modelo</button>
+    </div>
+
+    <!-- MODELO 5 -->
+    <div class="card">
+      <div>
+        <h3>📜 Constancia de Alumno Regular con QR</h3>
+        <p class="desc">Certificado oficial de regularidad emitido con firma digital, sello del establecimiento de Baradero y código de verificación criptográfico.</p>
+      </div>
+      <button class="btn" onclick="imprimirModeloConstancia()">🖨️ Generar PDF Modelo</button>
+    </div>
+
+  </div>
+
+  <script>
+    function openPrintWindow(title, bodyHtml) {
+      const win = window.open('', '_blank');
+      win.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>${title}</title>
+          <meta charset="utf-8">
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap');
+            body { font-family: 'Outfit', sans-serif; padding: 36px; color: #1E293B; line-height: 1.5; }
+            .header { text-align: center; border-bottom: 3px solid #3B82F6; padding-bottom: 20px; margin-bottom: 24px; }
+            .logo { font-size: 24px; font-weight: 800; color: #1D4ED8; letter-spacing: -0.5px; }
+            .sub { font-size: 13px; color: #64748B; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; }
+            .doc-title { font-size: 20px; font-weight: 800; text-align: center; margin: 20px 0; color: #0F172A; text-transform: uppercase; }
+            .info-box { display: flex; justify-content: space-between; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 16px 20px; border-radius: 12px; margin-bottom: 24px; font-size: 13px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 32px; font-size: 13px; }
+            th, td { border: 1px solid #CBD5E1; padding: 10px 8px; text-align: left; }
+            th { background-color: #1E40AF; color: white; font-weight: 700; text-align: center; text-transform: uppercase; font-size: 12px; }
+            tr:nth-child(even) { background-color: #F8FAFC; }
+            .footer { margin-top: 50px; display: flex; justify-content: space-between; text-align: center; }
+            .firma-box { width: 220px; border-top: 1.5px solid #334155; padding-top: 8px; font-size: 12px; color: #475569; font-weight: 600; }
+            @media print {
+              body { padding: 15px; }
+              th { background-color: #1E40AF !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="logo">🏫 INSTITUTO ADVENTISTA BARADERO - EDTECH SGE</div>
+            <div class="sub">Sistema de Gestión Escolar Oficial • PDF Modelo</div>
+          </div>
+          <div class="doc-title">${title}</div>
+          ${bodyHtml}
+          <div class="footer">
+            <div class="firma-box">Firma Preceptoría / Secretaría<br><strong>Control Curricular</strong></div>
+            <div class="firma-box">Sello Institucional y Dirección<br><strong>Colegio EdTech SGE</strong></div>
+          </div>
+          <script>setTimeout(function() { window.print(); }, 500);<\/script>
+        </body>
+        </html>
+      `);
+      win.document.close();
+    }
+
+    function imprimirModeloFaltasMateria() {
+      openPrintWindow('REPORTE DE FALTAS POR ASIGNATURA • PDF MODELO', `
+        <div class="info-box">
+          <div>
+            <div><strong>Asignatura / Materia:</strong> <span style="color:#1D4ED8; font-size:15px; font-weight:bold;">Matemática III</span></div>
+            <div style="margin-top:4px;"><strong>Curso / División:</strong> 3° Año Secundaria - Turno Mañana</div>
+          </div>
+          <div style="text-align:right;">
+            <div><strong>Profesor/a:</strong> Lic. González, Marcelo</div>
+            <div style="margin-top:4px;"><strong>Fecha de Emisión:</strong> 13/07/2026</div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>Apellido y Nombre</th><th>Presentes</th><th>Ausentes</th><th>Tardes</th><th>Total Faltas</th><th>Estado Curricular</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td style="text-align:center;">1</td><td><strong>AGUIRRE, CAMILA SOFÍA</strong><br><span style="color:#64748B;">DNI: 46.123.456</span></td><td style="text-align:center; color:green; font-weight:bold;">30</td><td style="text-align:center; color:red; font-weight:bold;">2</td><td style="text-align:center;">0</td><td style="text-align:center; font-weight:bold; font-size:15px;">2.0</td><td style="text-align:center;"><span style="background:#DCFCE7; color:#166534; padding:4px 8px; border-radius:12px; font-weight:bold; font-size:11px;">REGULAR</span></td></tr>
+            <tr><td style="text-align:center;">2</td><td><strong>BENÍTEZ, LUCAS MATÍAS</strong><br><span style="color:#64748B;">DNI: 45.987.654</span></td><td style="text-align:center; color:green; font-weight:bold;">28</td><td style="text-align:center; color:red; font-weight:bold;">3</td><td style="text-align:center;">4</td><td style="text-align:center; font-weight:bold; font-size:15px;">4.0</td><td style="text-align:center;"><span style="background:#FFEDD5; color:#9A3412; padding:4px 8px; border-radius:12px; font-weight:bold; font-size:11px;">ALERTA INASISTENCIAS</span></td></tr>
+            <tr><td style="text-align:center;">3</td><td><strong>CASTRO, VALENTINA MICAELA</strong><br><span style="color:#64748B;">DNI: 46.555.333</span></td><td style="text-align:center; color:green; font-weight:bold;">32</td><td style="text-align:center; color:red; font-weight:bold;">0</td><td style="text-align:center;">0</td><td style="text-align:center; font-weight:bold; font-size:15px;">0.0</td><td style="text-align:center;"><span style="background:#DBEAFE; color:#1E40AF; padding:4px 8px; border-radius:12px; font-weight:bold; font-size:11px;">ASISTENCIA PERFECTA</span></td></tr>
+            <tr><td style="text-align:center;">4</td><td><strong>DOMÍNGUEZ, SANTIAGO NICOLÁS</strong><br><span style="color:#64748B;">DNI: 45.111.222</span></td><td style="text-align:center; color:green; font-weight:bold;">26</td><td style="text-align:center; color:red; font-weight:bold;">5</td><td style="text-align:center;">4</td><td style="text-align:center; font-weight:bold; font-size:15px; color:red;">6.0</td><td style="text-align:center;"><span style="background:#FEE2E2; color:#991B1B; padding:4px 8px; border-radius:12px; font-weight:bold; font-size:11px;">RIESGO LIBRE (RITE)</span></td></tr>
+          </tbody>
+        </table>
+      `);
+    }
+
+    function imprimirModeloTrayectoria() {
+      openPrintWindow('BOLETÍN Y ANALÍTICO DE TODA LA TRAYECTORIA CURRICULAR', `
+        <div class="info-box">
+          <div>
+            <div><strong>Alumno/a:</strong> <span style="color:#1D4ED8; font-size:15px; font-weight:bold;">FERNÁNDEZ, MARTINA JULIETA</span></div>
+            <div style="margin-top:4px;"><strong>DNI:</strong> 46.888.999 • <strong>Legajo:</strong> #8921</div>
+          </div>
+          <div style="text-align:right;">
+            <div><strong>Promedio Acumulado:</strong> <span style="color:#1E40AF; font-size:16px; font-weight:800;">8.15</span></div>
+            <div style="margin-top:4px;"><strong>Estado:</strong> PROMOCIÓN DIRECTA</div>
+          </div>
+        </div>
+        <h4 style="margin:16px 0 8px 0; color:#1E40AF;">Historial por Ciclo Lectivo</h4>
+        <table>
+          <thead><tr><th>Ciclo Lectivo</th><th>División / Curso</th><th>Condición RITE</th><th>Promedio Anual</th></tr></thead>
+          <tbody>
+            <tr><td><strong>2023 - 1° Año Secundaria</strong></td><td>1° A - Turno Mañana</td><td style="color:green; font-weight:bold;">APROBADO</td><td style="text-align:center; font-weight:bold;">8.40</td></tr>
+            <tr><td><strong>2024 - 2° Año Secundaria</strong></td><td>2° A - Turno Mañana</td><td style="color:green; font-weight:bold;">APROBADO</td><td style="text-align:center; font-weight:bold;">7.85</td></tr>
+            <tr><td><strong>2025 - 3° Año Secundaria</strong></td><td>3° A - Turno Mañana</td><td style="color:blue; font-weight:bold;">EN CURSO (1 Adeudada)</td><td style="text-align:center; font-weight:bold;">8.20</td></tr>
+          </tbody>
+        </table>
+        <h4 style="margin:24px 0 8px 0; color:#1E40AF;">Calificaciones Históricas Consolidadas</h4>
+        <table>
+          <thead><tr><th>Asignatura / Área Curricular</th><th>Años Cursados</th><th>Calificación Definitiva</th><th>Estado de Acreditación</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Matemática I, II y III</strong></td><td>1° a 3° Año</td><td style="text-align:center; font-weight:bold;">8.20</td><td style="text-align:center; color:green; font-weight:bold;">APROBADA</td></tr>
+            <tr><td><strong>Prácticas del Lenguaje I, II y III</strong></td><td>1° a 3° Año</td><td style="text-align:center; font-weight:bold;">8.80</td><td style="text-align:center; color:green; font-weight:bold;">APROBADA</td></tr>
+            <tr><td><strong>Ciencias Naturales / Biología</strong></td><td>1° y 2° Año</td><td style="text-align:center; font-weight:bold;">8.50</td><td style="text-align:center; color:green; font-weight:bold;">APROBADA</td></tr>
+            <tr><td><strong>Historia y Construcción Ciudadana</strong></td><td>1° a 3° Año</td><td style="text-align:center; font-weight:bold;">9.00</td><td style="text-align:center; color:green; font-weight:bold;">APROBADA</td></tr>
+            <tr><td><strong>Física I</strong></td><td>3° Año</td><td style="text-align:center; font-weight:bold; color:orange;">6.50</td><td style="text-align:center; color:#B45309; font-weight:bold;">COMISIÓN RITE</td></tr>
+          </tbody>
+        </table>
+      `);
+    }
+
+    function imprimirModeloBoletin() {
+      openPrintWindow('BOLETÍN OFICIAL DE CALIFICACIONES RITE', `
+        <div class="info-box">
+          <div><strong>Alumno/a:</strong> FERNÁNDEZ, MARTINA JULIETA (DNI: 46.888.999)</div>
+          <div><strong>Curso:</strong> 3° Año A • <strong>Ciclo Lectivo:</strong> 2026</div>
+        </div>
+        <table>
+          <thead><tr><th>Área Curricular / Materia</th><th>Valoración 1° Cuat.</th><th>Calificación RITE</th><th>Observaciones Docentes</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Matemática III</strong></td><td style="text-align:center; font-weight:bold; color:green;">TEA (Trayectoria Avanzada)</td><td style="text-align:center; font-weight:bold;">9.00</td><td>Excelente desempeño y participación activa en resolución de problemas.</td></tr>
+            <tr><td><strong>Prácticas del Lenguaje III</strong></td><td style="text-align:center; font-weight:bold; color:green;">TEA (Trayectoria Avanzada)</td><td style="text-align:center; font-weight:bold;">8.50</td><td>Muy buenas producciones escritas y comprensión lectora.</td></tr>
+            <tr><td><strong>Física I</strong></td><td style="text-align:center; font-weight:bold; color:orange;">TEP (En Proceso)</td><td style="text-align:center; font-weight:bold;">6.50</td><td>Debe reforzar prácticos de cinemática en instancias RITE.</td></tr>
+          </tbody>
+        </table>
+      `);
+    }
+
+    function imprimirModeloAsistencia() {
+      openPrintWindow('REPORTE GENERAL DE ASISTENCIA ACUMULADA', `
+        <div class="info-box">
+          <div><strong>Alumno/a:</strong> FERNÁNDEZ, MARTINA JULIETA • <strong>Curso:</strong> 3° A</div>
+          <div><strong>Total Inasistencias Computadas:</strong> <span style="color:red; font-weight:bold;">2.5 Faltas</span></div>
+        </div>
+        <table>
+          <thead><tr><th>Fecha</th><th>Tipo de Registro</th><th>Valor Computado</th><th>Justificación Formal</th></tr></thead>
+          <tbody>
+            <tr><td>12/07/2026</td><td>Ausente por Enfermedad</td><td style="text-align:center; font-weight:bold;">1.00</td><td style="color:green; font-weight:bold;">Justificado (Certificado Médico)</td></tr>
+            <tr><td>03/06/2026</td><td>Inasistencia Injustificada</td><td style="text-align:center; font-weight:bold;">1.00</td><td style="color:red;">Sin justificar</td></tr>
+            <tr><td>18/05/2026</td><td>Llegada Tarde a Contraturno</td><td style="text-align:center; font-weight:bold;">0.50</td><td>Aviso previo de Tutoría</td></tr>
+          </tbody>
+        </table>
+      `);
+    }
+
+    function imprimirModeloConstancia() {
+      openPrintWindow('CONSTANCIA DE ALUMNO REGULAR OFICIAL', `
+        <div style="padding: 24px; border: 2px solid #1E40AF; border-radius: 12px; margin: 20px 0; line-height: 2;">
+          El que suscribe, Director/a del <strong>INSTITUTO ADVENTISTA BARADERO - EDTECH SGE</strong>, hace constar que <strong>FERNÁNDEZ, MARTINA JULIETA</strong>, DNI N° <strong>46.888.999</strong>, es alumno/a regular de <strong>3° Año Secundaria (División A)</strong> durante el ciclo lectivo actual.
+          <br><br>
+          A pedido del/la interesado/a y al solo efecto de ser presentado/a ante las autoridades que lo requieran, se extiende la presente en la ciudad de Baradero, Provincia de Buenos Aires, a los 13 días del mes de Julio de 2026.
+          <div style="text-align:center; margin-top:30px; font-weight:bold; font-family:monospace; color:#475569;">
+            CÓDIGO DE VERIFICACIÓN CRIPTOGRÁFICA: EDTECH-REG-2026-8921-X9K
+          </div>
+        </div>
+      `);
+    }
+  </script>
+</body>
+</html>

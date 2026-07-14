@@ -1,0 +1,19 @@
+{
+  "name": "gestion-escolar",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "bash vercel_build.sh",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.108.1",
+    "pg": "^8.22.0",
+    "xlsx": "^0.18.5"
+  }
+}
