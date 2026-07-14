@@ -25,6 +25,6 @@ flutter pub get
 
 # 5. Compilar la aplicación web para producción (Release Mode)
 echo "=== 🏗️ Compilando aplicación Web para Vercel ==="
-flutter build web --release --web-renderer canvaskit
+flutter build web --release
 
 echo "=== ✅ ¡Compilación finalizada con éxito! Archivos generados en build/web ==="
