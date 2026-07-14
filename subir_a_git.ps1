@@ -7,7 +7,7 @@ Write-Host "=== 2. Agregando todos los archivos del proyecto al seguimiento ==="
 git add .
 
 Write-Host "=== 3. Creando commit con la version actual ===" -ForegroundColor Cyan
-git commit -m "SGEducativa: Version oficial con Logo, colores institucionales y configuracion para Vercel"
+git commit -m "SGEducativa: Fix intl any and clean pubspec lock for Vercel"
 
 Write-Host "=== 4. Configurando la rama principal como main ===" -ForegroundColor Cyan
 git branch -M main
