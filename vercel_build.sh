@@ -20,6 +20,7 @@ flutter config --enable-web
 
 # 4. Obtener dependencias del proyecto (`flutter pub get`)
 echo "=== 📦 Descargando paquetes del proyecto ==="
+rm -f pubspec.lock
 flutter pub get
 
 # 5. Compilar la aplicación web para producción (Release Mode)
