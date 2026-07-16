@@ -743,42 +743,45 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: DataTable(
-                      headingRowColor: WidgetStateProperty.all(Colors.grey.shade100),
-                      headingRowHeight: 38,
-                      dataRowMinHeight: 36,
-                      dataRowMaxHeight: 36,
-                      columns: const [
-                        DataColumn(label: Text('Materia / Área', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                        DataColumn(label: Text('Faltas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                        DataColumn(label: Text('Asistencia', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                        DataColumn(label: Text('Estado RITE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                      ],
-                      rows: faltasMateria.map((fm) {
-                        final double f = fm['faltas'] as double;
-                        return DataRow(cells: [
-                          DataCell(Text(fm['materia'] as String, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
-                          DataCell(Text(f.toStringAsFixed(1), style: TextStyle(fontWeight: FontWeight.bold, color: f > 2 ? Colors.red.shade800 : Colors.black87))),
-                          DataCell(Text(fm['porcentaje'] as String, style: const TextStyle(fontSize: 12))),
-                          DataCell(
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: f == 0 ? Colors.blue.shade50 : (f > 3 ? Colors.red.shade50 : Colors.green.shade50),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                fm['estado'] as String,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: f == 0 ? Colors.blue.shade800 : (f > 3 ? Colors.red.shade800 : Colors.green.shade800),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: DataTable(
+                        headingRowColor: WidgetStateProperty.all(Colors.grey.shade100),
+                        headingRowHeight: 38,
+                        dataRowMinHeight: 36,
+                        dataRowMaxHeight: 36,
+                        columns: const [
+                          DataColumn(label: Text('Materia / Área', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          DataColumn(label: Text('Faltas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          DataColumn(label: Text('Asistencia', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          DataColumn(label: Text('Estado RITE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                        ],
+                        rows: faltasMateria.map((fm) {
+                          final double f = fm['faltas'] as double;
+                          return DataRow(cells: [
+                            DataCell(Text(fm['materia'] as String, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
+                            DataCell(Text(f.toStringAsFixed(1), style: TextStyle(fontWeight: FontWeight.bold, color: f > 2 ? Colors.red.shade800 : Colors.black87))),
+                            DataCell(Text(fm['porcentaje'] as String, style: const TextStyle(fontSize: 12))),
+                            DataCell(
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: f == 0 ? Colors.blue.shade50 : (f > 3 ? Colors.red.shade50 : Colors.green.shade50),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  fm['estado'] as String,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: f == 0 ? Colors.blue.shade800 : (f > 3 ? Colors.red.shade800 : Colors.green.shade800),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ]);
-                      }).toList(),
+                          ]);
+                        }).toList(),
+                      ),
                     ),
                   ),
                 ),
@@ -1911,19 +1914,189 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
           t['dni'].toString().toLowerCase().contains(text);
     }).toList();
 
+    final columnaAlumnos = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Alumnos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            SizedBox(
+              width: 180,
+              height: 40,
+              child: TextField(
+                decoration: const InputDecoration(
+                  hintText: 'Buscar...',
+                  prefixIcon: Icon(Icons.search_rounded, size: 18),
+                  contentPadding: EdgeInsets.zero,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                ),
+                onChanged: (val) => setState(() => _searchAlumnos = val),
+              ),
+            )
+          ],
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.grey.withAlpha(51)),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columnSpacing: 16,
+                  columns: const [
+                    DataColumn(label: Text('Nombre')),
+                    DataColumn(label: Text('DNI')),
+                    DataColumn(label: Text('Curso')),
+                    DataColumn(label: Text('Acciones')),
+                  ],
+                  rows: filteredAlumnos.map((a) {
+                    return DataRow(
+                      cells: [
+                        DataCell(Text(a['nombre_completo'] ?? '')),
+                        DataCell(Text(a['dni'] ?? '-')),
+                        DataCell(Text(a['curso_nombre'] ?? 'Sin matricular')),
+                        DataCell(
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.assignment_turned_in_rounded, color: Colors.indigo, size: 20),
+                                tooltip: 'Imprimir Boletín RITE',
+                                onPressed: () => _imprimirBoletinAlumno(a),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.analytics_rounded, color: Colors.green, size: 20),
+                                tooltip: 'Ver Faltas por Materia y Asistencia',
+                                onPressed: () => _mostrarDetalleYFaltasPorMateriaAlumno(a),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.history_edu_rounded, color: Colors.purple, size: 20),
+                                tooltip: 'Trayectoria, Analítico y RITE',
+                                onPressed: () => _abrirModalTrayectoriaAlumno(a),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.edit_rounded, color: Colors.blue, size: 20),
+                                tooltip: 'Editar Alumno',
+                                onPressed: () => _abrirModalEditarUsuario(a, 'ALUMNO'),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_rounded, color: Colors.red, size: 20),
+                                tooltip: 'Eliminar Alumno',
+                                onPressed: () => _confirmarBajaUsuario(a),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ),
+        )
+      ],
+    );
+
+    final columnaTutores = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Tutores', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            SizedBox(
+              width: 180,
+              height: 40,
+              child: TextField(
+                decoration: const InputDecoration(
+                  hintText: 'Buscar...',
+                  prefixIcon: Icon(Icons.search_rounded, size: 18),
+                  contentPadding: EdgeInsets.zero,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                ),
+                onChanged: (val) => setState(() => _searchTutores = val),
+              ),
+            )
+          ],
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.grey.withAlpha(51)),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columnSpacing: 16,
+                  columns: const [
+                    DataColumn(label: Text('Nombre')),
+                    DataColumn(label: Text('DNI')),
+                    DataColumn(label: Text('Familia')),
+                    DataColumn(label: Text('Acciones')),
+                  ],
+                  rows: filteredTutores.map((t) {
+                    return DataRow(
+                      cells: [
+                        DataCell(Text(t['nombre_completo'] ?? '')),
+                        DataCell(Text(t['dni'] ?? '-')),
+                        DataCell(Text(t['grupo_nombre'] ?? 'Sin asignar')),
+                        DataCell(
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit_rounded, color: Colors.blue, size: 20),
+                                onPressed: () => _abrirModalEditarUsuario(t, 'PADRE'),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_rounded, color: Colors.red, size: 20),
+                                onPressed: () => _confirmarBajaUsuario(t),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ),
+        )
+      ],
+    );
+
     return Padding(
-      padding: const EdgeInsets.all(24.0),
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 16,
+            runSpacing: 12,
             children: [
               Text(
                 'Comunidad Educativa',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
-              Row(
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   ElevatedButton.icon(
                     onPressed: _abrirModalVincularFamilia,
@@ -1931,13 +2104,11 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                     label: const Text('Vincular Alumno/Tutor'),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo.withAlpha(20)),
                   ),
-                  const SizedBox(width: 8),
                   ElevatedButton.icon(
                     onPressed: () => _abrirModalCrearUsuario(rol: 'ALUMNO'),
                     icon: const Icon(Icons.person_add_rounded),
                     label: const Text('Alta Alumno'),
                   ),
-                  const SizedBox(width: 8),
                   ElevatedButton.icon(
                     onPressed: () => _abrirModalCrearUsuario(rol: 'PADRE'),
                     icon: const Icon(Icons.supervisor_account_rounded),
@@ -1947,174 +2118,48 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Columna Alumnos
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Alumnos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          SizedBox(
-                            width: 200,
-                            height: 40,
-                            child: TextField(
-                              decoration: const InputDecoration(
-                                hintText: 'Buscar...',
-                                prefixIcon: Icon(Icons.search_rounded, size: 18),
-                                contentPadding: EdgeInsets.zero,
-                                border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                              ),
-                              onChanged: (val) => setState(() => _searchAlumnos = val),
-                            ),
-                          )
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: Card(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: Colors.grey.withAlpha(51)),
-                          ),
-                          child: SingleChildScrollView(
-                            child: DataTable(
-                              columnSpacing: 16,
-                              columns: const [
-                                DataColumn(label: Text('Nombre')),
-                                DataColumn(label: Text('DNI')),
-                                DataColumn(label: Text('Curso')),
-                                DataColumn(label: Text('Acciones')),
-                              ],
-                              rows: filteredAlumnos.map((a) {
-                                return DataRow(
-                                  cells: [
-                                    DataCell(Text(a['nombre_completo'])),
-                                    DataCell(Text(a['dni'] ?? '-')),
-                                    DataCell(Text(a['curso_nombre'] ?? 'Sin matricular')),
-                                    DataCell(
-                                      Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            icon: const Icon(Icons.assignment_turned_in_rounded, color: Colors.indigo, size: 20),
-                                            tooltip: 'Imprimir Boletín RITE',
-                                            onPressed: () => _imprimirBoletinAlumno(a),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.analytics_rounded, color: Colors.green, size: 20),
-                                            tooltip: 'Ver Faltas por Materia y Asistencia',
-                                            onPressed: () => _mostrarDetalleYFaltasPorMateriaAlumno(a),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.history_edu_rounded, color: Colors.purple, size: 20),
-                                            tooltip: 'Trayectoria, Analítico y RITE',
-                                            onPressed: () => _abrirModalTrayectoriaAlumno(a),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.edit_rounded, color: Colors.blue, size: 20),
-                                            tooltip: 'Editar Alumno',
-                                            onPressed: () => _abrirModalEditarUsuario(a, 'ALUMNO'),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.delete_rounded, color: Colors.red, size: 20),
-                                            tooltip: 'Eliminar Alumno',
-                                            onPressed: () => _confirmarBajaUsuario(a),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              }).toList(),
-                            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = constraints.maxWidth < 900;
+                if (isMobile) {
+                  return DefaultTabController(
+                    length: 2,
+                    child: Column(
+                      children: [
+                        TabBar(
+                          labelColor: Theme.of(context).colorScheme.primary,
+                          unselectedLabelColor: Colors.grey,
+                          indicatorColor: Theme.of(context).colorScheme.primary,
+                          tabs: const [
+                            Tab(icon: Icon(Icons.school_rounded), text: 'Alumnos'),
+                            Tab(icon: Icon(Icons.supervisor_account_rounded), text: 'Tutores'),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              columnaAlumnos,
+                              columnaTutores,
+                            ],
                           ),
                         ),
-                      )
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 24),
-                // Columna Tutores
-                Expanded(
-                  child: Column(
+                      ],
+                    ),
+                  );
+                } else {
+                  return Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Tutores', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          SizedBox(
-                            width: 200,
-                            height: 40,
-                            child: TextField(
-                              decoration: const InputDecoration(
-                                hintText: 'Buscar...',
-                                prefixIcon: Icon(Icons.search_rounded, size: 18),
-                                contentPadding: EdgeInsets.zero,
-                                border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                              ),
-                              onChanged: (val) => setState(() => _searchTutores = val),
-                            ),
-                          )
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: Card(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: Colors.grey.withAlpha(51)),
-                          ),
-                          child: SingleChildScrollView(
-                            child: DataTable(
-                              columnSpacing: 16,
-                              columns: const [
-                                DataColumn(label: Text('Nombre')),
-                                DataColumn(label: Text('DNI')),
-                                DataColumn(label: Text('Familia')),
-                                DataColumn(label: Text('Acciones')),
-                              ],
-                              rows: filteredTutores.map((t) {
-                                return DataRow(
-                                  cells: [
-                                    DataCell(Text(t['nombre_completo'])),
-                                    DataCell(Text(t['dni'] ?? '-')),
-                                    DataCell(Text(t['grupo_nombre'] ?? 'Sin asignar')),
-                                    DataCell(
-                                      Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            icon: const Icon(Icons.edit_rounded, color: Colors.blue, size: 20),
-                                            onPressed: () => _abrirModalEditarUsuario(t, 'PADRE'),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.delete_rounded, color: Colors.red, size: 20),
-                                            onPressed: () => _confirmarBajaUsuario(t),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                        ),
-                      )
+                      Expanded(child: columnaAlumnos),
+                      const SizedBox(width: 24),
+                      Expanded(child: columnaTutores),
                     ],
-                  ),
-                ),
-              ],
+                  );
+                }
+              },
             ),
           )
         ],
@@ -2123,32 +2168,96 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
   }
 
   Widget _buildAcademyTab() {
+    final columnaCursos = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Listado de Cursos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const SizedBox(height: 12),
+        Expanded(
+          child: Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.grey.withAlpha(51)),
+            ),
+            child: ListView.separated(
+              itemCount: _cursos.length,
+              separatorBuilder: (context, index) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final c = _cursos[index];
+                return ListTile(
+                  leading: const Icon(Icons.class_rounded, color: Colors.blue),
+                  title: Text(c['identificador_division'] as String),
+                );
+              },
+            ),
+          ),
+        )
+      ],
+    );
+
+    final columnaMaterias = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Materias Registradas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const SizedBox(height: 12),
+        Expanded(
+          child: Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.grey.withAlpha(51)),
+            ),
+            child: ListView.separated(
+              itemCount: _materias.length,
+              separatorBuilder: (context, index) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final m = _materias[index];
+                final c = _cursos.firstWhere(
+                  (curso) => curso['curso_id'] == m['curso_id'],
+                  orElse: () => {'identificador_division': 'Curso Desconocido'},
+                );
+                return ListTile(
+                  leading: const Icon(Icons.menu_book_rounded, color: Colors.teal),
+                  title: Text(m['nombre_asignatura'] as String),
+                  subtitle: Text('Curso: ${c['identificador_division']}'),
+                );
+              },
+            ),
+          ),
+        )
+      ],
+    );
+
     return Padding(
-      padding: const EdgeInsets.all(24.0),
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 16,
+            runSpacing: 12,
             children: [
               Text(
                 'Estructura y Carga de Academia',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
-              Row(
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   ElevatedButton.icon(
                     onPressed: _abrirModalCrearEventoCalendario,
                     icon: const Icon(Icons.calendar_month_rounded),
                     label: const Text('+ Agregar evento'),
                   ),
-                  const SizedBox(width: 8),
                   ElevatedButton.icon(
                     onPressed: _abrirModalCrearCurso,
                     icon: const Icon(Icons.add_home_rounded),
                     label: const Text('Nuevo Curso/División'),
                   ),
-                  const SizedBox(width: 8),
                   ElevatedButton.icon(
                     onPressed: _abrirModalCrearMateria,
                     icon: const Icon(Icons.book_rounded),
@@ -2158,84 +2267,55 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Cursos
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Listado de Cursos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: Card(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: Colors.grey.withAlpha(51)),
-                          ),
-                          child: ListView.separated(
-                            itemCount: _cursos.length,
-                            separatorBuilder: (context, index) => const Divider(height: 1),
-                            itemBuilder: (context, index) {
-                              final c = _cursos[index];
-                              return ListTile(
-                                leading: const Icon(Icons.class_rounded, color: Colors.blue),
-                                title: Text(c['identificador_division'] as String),
-                              );
-                            },
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = constraints.maxWidth < 900;
+                if (isMobile) {
+                  return DefaultTabController(
+                    length: 2,
+                    child: Column(
+                      children: [
+                        TabBar(
+                          labelColor: Theme.of(context).colorScheme.primary,
+                          unselectedLabelColor: Colors.grey,
+                          indicatorColor: Theme.of(context).colorScheme.primary,
+                          tabs: const [
+                            Tab(icon: Icon(Icons.class_rounded), text: 'Cursos'),
+                            Tab(icon: Icon(Icons.book_rounded), text: 'Materias'),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              columnaCursos,
+                              columnaMaterias,
+                            ],
                           ),
                         ),
-                      )
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 24),
-                // Materias
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                      ],
+                    ),
+                  );
+                } else {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text('Materias Registradas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: Card(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: Colors.grey.withAlpha(51)),
-                          ),
-                          child: ListView.separated(
-                            itemCount: _materias.length,
-                            separatorBuilder: (context, index) => const Divider(height: 1),
-                            itemBuilder: (context, index) {
-                              final m = _materias[index];
-                              final c = _cursos.firstWhere(
-                                (curso) => curso['curso_id'] == m['curso_id'],
-                                orElse: () => {'identificador_division': 'Curso Desconocido'},
-                              );
-                              return ListTile(
-                                leading: const Icon(Icons.menu_book_rounded, color: Colors.teal),
-                                title: Text(m['nombre_asignatura'] as String),
-                                subtitle: Text('Curso: ${c['identificador_division']}'),
-                              );
-                            },
-                          ),
-                        ),
-                      )
+                      Expanded(child: columnaCursos),
+                      const SizedBox(width: 24),
+                      Expanded(child: columnaMaterias),
                     ],
-                  ),
-                ),
-              ],
+                  );
+                }
+              },
             ),
           )
         ],
       ),
     );
   }
+
 
   Widget _buildDashboardTab(ColorScheme colorScheme) {
     int totalAlumnos = _alumnos.length;
@@ -2535,45 +2615,48 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: DataTable(
-                  headingRowColor: WidgetStateProperty.all(colorScheme.primaryContainer.withAlpha(80)),
-                  columns: const [
-                    DataColumn(label: Text('Alumno', style: TextStyle(fontWeight: FontWeight.bold))),
-                    DataColumn(label: Text('DNI', style: TextStyle(fontWeight: FontWeight.bold))),
-                    DataColumn(label: Text('Clases', style: TextStyle(fontWeight: FontWeight.bold))),
-                    DataColumn(label: Text('Presentes', style: TextStyle(fontWeight: FontWeight.bold))),
-                    DataColumn(label: Text('Ausentes', style: TextStyle(fontWeight: FontWeight.bold))),
-                    DataColumn(label: Text('Faltas Materia', style: TextStyle(fontWeight: FontWeight.bold))),
-                    DataColumn(label: Text('Acción', style: TextStyle(fontWeight: FontWeight.bold))),
-                  ],
-                  rows: filteredAlumnos.map((a) {
-                    final String name = a['nombre_completo']?.toString().toUpperCase() ?? 'ALUMNO';
-                    final String dni = a['dni']?.toString() ?? 'Sin DNI';
-                    final double faltas = (name.length % 4) * 1.0;
-                    final int presentes = 32 - faltas.toInt();
-                    return DataRow(cells: [
-                      DataCell(Text(name, style: const TextStyle(fontWeight: FontWeight.w600))),
-                      DataCell(Text(dni)),
-                      DataCell(const Text('32')),
-                      DataCell(Text('$presentes', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
-                      DataCell(Text('${faltas.toInt()}', style: TextStyle(color: faltas > 0 ? Colors.red : Colors.grey, fontWeight: FontWeight.bold))),
-                      DataCell(Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: faltas > 2 ? Colors.red.shade100 : Colors.blue.shade100,
-                          borderRadius: BorderRadius.circular(12),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    headingRowColor: WidgetStateProperty.all(colorScheme.primaryContainer.withAlpha(80)),
+                    columns: const [
+                      DataColumn(label: Text('Alumno', style: TextStyle(fontWeight: FontWeight.bold))),
+                      DataColumn(label: Text('DNI', style: TextStyle(fontWeight: FontWeight.bold))),
+                      DataColumn(label: Text('Clases', style: TextStyle(fontWeight: FontWeight.bold))),
+                      DataColumn(label: Text('Presentes', style: TextStyle(fontWeight: FontWeight.bold))),
+                      DataColumn(label: Text('Ausentes', style: TextStyle(fontWeight: FontWeight.bold))),
+                      DataColumn(label: Text('Faltas Materia', style: TextStyle(fontWeight: FontWeight.bold))),
+                      DataColumn(label: Text('Acción', style: TextStyle(fontWeight: FontWeight.bold))),
+                    ],
+                    rows: filteredAlumnos.map((a) {
+                      final String name = a['nombre_completo']?.toString().toUpperCase() ?? 'ALUMNO';
+                      final String dni = a['dni']?.toString() ?? 'Sin DNI';
+                      final double faltas = (name.length % 4) * 1.0;
+                      final int presentes = 32 - faltas.toInt();
+                      return DataRow(cells: [
+                        DataCell(Text(name, style: const TextStyle(fontWeight: FontWeight.w600))),
+                        DataCell(Text(dni)),
+                        DataCell(const Text('32')),
+                        DataCell(Text('$presentes', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
+                        DataCell(Text('${faltas.toInt()}', style: TextStyle(color: faltas > 0 ? Colors.red : Colors.grey, fontWeight: FontWeight.bold))),
+                        DataCell(Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: faltas > 2 ? Colors.red.shade100 : Colors.blue.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text('${faltas.toStringAsFixed(1)} Faltas', style: TextStyle(fontWeight: FontWeight.bold, color: faltas > 2 ? Colors.red.shade900 : Colors.blue.shade900, fontSize: 12)),
+                        )),
+                        DataCell(
+                          IconButton(
+                            icon: const Icon(Icons.analytics_outlined, color: Colors.blue),
+                            tooltip: 'Ver todas las materias del alumno',
+                            onPressed: () => _mostrarDetalleYFaltasPorMateriaAlumno(a),
+                          ),
                         ),
-                        child: Text('${faltas.toStringAsFixed(1)} Faltas', style: TextStyle(fontWeight: FontWeight.bold, color: faltas > 2 ? Colors.red.shade900 : Colors.blue.shade900, fontSize: 12)),
-                      )),
-                      DataCell(
-                        IconButton(
-                          icon: const Icon(Icons.analytics_outlined, color: Colors.blue),
-                          tooltip: 'Ver todas las materias del alumno',
-                          onPressed: () => _mostrarDetalleYFaltasPorMateriaAlumno(a),
-                        ),
-                      ),
-                    ]);
-                  }).toList(),
+                      ]);
+                    }).toList(),
+                  ),
                 ),
               ),
             ),
@@ -3016,51 +3099,109 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
             ),
             child: Padding(
               padding: const EdgeInsets.all(12.0),
-              child: Row(
-                children: [
-                  const Icon(Icons.folder_open_rounded, color: Colors.blue, size: 24),
-                  const SizedBox(width: 12),
-                  const Text('Explorador:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: _repCursoId,
-                      decoration: const InputDecoration(labelText: 'Curso', border: OutlineInputBorder()),
-                      items: _cursos.map((c) {
-                        return DropdownMenuItem(
-                          value: c['curso_id'] as String,
-                          child: Text(c['identificador_division'] as String),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        setState(() {
-                          _repCursoId = val;
-                          final mats = _materias.where((m) => m['curso_id'] == val).toList();
-                          _repMateriaId = mats.isNotEmpty ? mats.first['materia_id'] as String : null;
-                        });
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: _repMateriaId,
-                      decoration: const InputDecoration(labelText: 'Materia', border: OutlineInputBorder()),
-                      disabledHint: const Text('Sin materias'),
-                      items: materiasDelCurso.map((m) {
-                        return DropdownMenuItem(
-                          value: m['materia_id'] as String,
-                          child: Text(m['nombre_asignatura'] as String),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        setState(() {
-                          _repMateriaId = val;
-                        });
-                      },
-                    ),
-                  ),
-                ],
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isMobile = constraints.maxWidth < 650;
+                  if (isMobile) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.folder_open_rounded, color: Colors.blue, size: 24),
+                            const SizedBox(width: 12),
+                            const Text('Explorador:', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          value: _repCursoId,
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: 'Curso', border: OutlineInputBorder()),
+                          items: _cursos.map((c) {
+                            return DropdownMenuItem(
+                              value: c['curso_id'] as String,
+                              child: Text(c['identificador_division'] as String),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            setState(() {
+                              _repCursoId = val;
+                              final mats = _materias.where((m) => m['curso_id'] == val).toList();
+                              _repMateriaId = mats.isNotEmpty ? mats.first['materia_id'] as String : null;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          value: _repMateriaId,
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: 'Materia', border: OutlineInputBorder()),
+                          disabledHint: const Text('Sin materias'),
+                          items: materiasDelCurso.map((m) {
+                            return DropdownMenuItem(
+                              value: m['materia_id'] as String,
+                              child: Text(m['nombre_asignatura'] as String),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            setState(() {
+                              _repMateriaId = val;
+                            });
+                          },
+                        ),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      const Icon(Icons.folder_open_rounded, color: Colors.blue, size: 24),
+                      const SizedBox(width: 12),
+                      const Text('Explorador:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _repCursoId,
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: 'Curso', border: OutlineInputBorder()),
+                          items: _cursos.map((c) {
+                            return DropdownMenuItem(
+                              value: c['curso_id'] as String,
+                              child: Text(c['identificador_division'] as String),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            setState(() {
+                              _repCursoId = val;
+                              final mats = _materias.where((m) => m['curso_id'] == val).toList();
+                              _repMateriaId = mats.isNotEmpty ? mats.first['materia_id'] as String : null;
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _repMateriaId,
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: 'Materia', border: OutlineInputBorder()),
+                          disabledHint: const Text('Sin materias'),
+                          items: materiasDelCurso.map((m) {
+                            return DropdownMenuItem(
+                              value: m['materia_id'] as String,
+                              child: Text(m['nombre_asignatura'] as String),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            setState(() {
+                              _repMateriaId = val;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ),
@@ -3069,15 +3210,51 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
             const Expanded(child: Center(child: Text('Seleccione un curso y materia para ver los documentos.')))
           else
             Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildRepoCategoryColumn('Planificación', archivosFiltrados, colorScheme),
-                  const SizedBox(width: 16),
-                  _buildRepoCategoryColumn('Contrato Pedagógico', archivosFiltrados, colorScheme),
-                  const SizedBox(width: 16),
-                  _buildRepoCategoryColumn('Criterios de Evaluación', archivosFiltrados, colorScheme),
-                ],
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isMobile = constraints.maxWidth < 800;
+                  if (isMobile) {
+                    return DefaultTabController(
+                      length: 3,
+                      child: Column(
+                        children: [
+                          TabBar(
+                            labelColor: colorScheme.primary,
+                            unselectedLabelColor: Colors.grey,
+                            indicatorColor: colorScheme.primary,
+                            isScrollable: true,
+                            tabs: const [
+                              Tab(icon: Icon(Icons.description_rounded), text: 'Planificación'),
+                              Tab(icon: Icon(Icons.rule_rounded), text: 'Contrato Pedagógico'),
+                              Tab(icon: Icon(Icons.checklist_rounded), text: 'Criterios de Evaluación'),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Expanded(
+                            child: TabBarView(
+                              children: [
+                                _buildRepoCategoryColumnInner('Planificación', archivosFiltrados, colorScheme),
+                                _buildRepoCategoryColumnInner('Contrato Pedagógico', archivosFiltrados, colorScheme),
+                                _buildRepoCategoryColumnInner('Criterios de Evaluación', archivosFiltrados, colorScheme),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  } else {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildRepoCategoryColumn('Planificación', archivosFiltrados, colorScheme),
+                        const SizedBox(width: 16),
+                        _buildRepoCategoryColumn('Contrato Pedagógico', archivosFiltrados, colorScheme),
+                        const SizedBox(width: 16),
+                        _buildRepoCategoryColumn('Criterios de Evaluación', archivosFiltrados, colorScheme),
+                      ],
+                    );
+                  }
+                },
               ),
             ),
         ],
@@ -3086,6 +3263,10 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
   }
 
   Widget _buildRepoCategoryColumn(String tipo, List<Map<String, dynamic>> todosArchivos, ColorScheme colorScheme) {
+    return Expanded(child: _buildRepoCategoryColumnInner(tipo, todosArchivos, colorScheme));
+  }
+
+  Widget _buildRepoCategoryColumnInner(String tipo, List<Map<String, dynamic>> todosArchivos, ColorScheme colorScheme) {
     final archivos = todosArchivos.where((a) => a['tipo'] == tipo).toList();
     
     return Expanded(
@@ -3807,8 +3988,11 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 16,
+            runSpacing: 12,
             children: [
               const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3979,16 +4163,16 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 12,
           children: [
-            const Expanded(
-              child: Text(
-                'Informes y evaluaciones originales subidas por los docentes con fecha de toma programada para ser adecuadas por el EOE:',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-              ),
+            const Text(
+              'Informes y evaluaciones originales subidas por los docentes con fecha de toma programada para ser adecuadas por el EOE:',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
             ),
-            const SizedBox(width: 12),
             ElevatedButton.icon(
               onPressed: () => _subirEvaluacionDocenteEoeDialog(legajoId),
               icon: const Icon(Icons.upload_file_rounded, size: 18),
@@ -4051,12 +4235,22 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                             const SizedBox(height: 12),
                             const Divider(height: 1),
                             const SizedBox(height: 12),
-                            Row(
+                            Wrap(
+                              alignment: WrapAlignment.spaceBetween,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 8,
+                              runSpacing: 8,
                               children: [
-                                const Icon(Icons.calendar_today_rounded, size: 16, color: Colors.indigo),
-                                const SizedBox(width: 6),
-                                Text('Fecha de Toma Programada: ${ev['fecha_evaluacion'] ?? "Sin fecha fijada"}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.indigo)),
-                                const Spacer(),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.calendar_today_rounded, size: 16, color: Colors.indigo),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text('Fecha de Toma Programada: ${ev['fecha_evaluacion'] ?? "Sin fecha fijada"}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.indigo)),
+                                    ),
+                                  ],
+                                ),
                                 TextButton.icon(
                                   onPressed: () => _editarFechaEvaluacionEoeDialog(legajoId, ev),
                                   icon: const Icon(Icons.edit_calendar_rounded, size: 16),
@@ -4078,7 +4272,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      const Text('📝 Observaciones del Gabinete (EOE) para la Adecuación:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo)),
+                                      const Expanded(child: Text('📝 Observaciones del Gabinete (EOE) para la Adecuación:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo))),
                                       InkWell(
                                         onTap: () => _editarObservacionesEoeDialog(legajoId, ev),
                                         child: const Padding(
@@ -4094,15 +4288,24 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                               ),
                             ),
                             const SizedBox(height: 12),
-                            Row(
+                            Wrap(
+                              alignment: WrapAlignment.spaceBetween,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 12,
+                              runSpacing: 8,
                               children: [
-                                const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 20),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    hasAdecuado ? 'Archivo Adecuado Listó para el Alumno: ${ev['archivo_adecuado']}' : 'Aún no se ha subido el archivo con la evaluación adecuada.',
-                                    style: TextStyle(fontSize: 13, fontWeight: hasAdecuado ? FontWeight.bold : FontWeight.normal, color: hasAdecuado ? Colors.green.shade800 : Colors.grey),
-                                  ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 20),
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        hasAdecuado ? 'Archivo Adecuado Listo: ${ev['archivo_adecuado']}' : 'Aún no se ha subido el archivo con la evaluación adecuada.',
+                                        style: TextStyle(fontSize: 13, fontWeight: hasAdecuado ? FontWeight.bold : FontWeight.normal, color: hasAdecuado ? Colors.green.shade800 : Colors.grey),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 ElevatedButton.icon(
                                   onPressed: () => _subirArchivoAdecuadoEoeDialog(legajoId, ev),

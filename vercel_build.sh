@@ -23,7 +23,18 @@ echo "=== 📦 Descargando paquetes del proyecto ==="
 rm -f pubspec.lock
 flutter pub get
 
-# 5. Compilar la aplicación web para producción (Release Mode)
+# 5. Asegurar que el logo personalizado de la app sea el favicon e icono web
+echo "=== 🖼️ Aplicando logo personalizado a favicon e iconos web ==="
+if [ -f "assets/images/logo.png" ]; then
+  cp -f assets/images/logo.png web/favicon.png
+  cp -f assets/images/logo.png web/icons/Icon-192.png
+  cp -f assets/images/logo.png web/icons/Icon-512.png
+  cp -f assets/images/logo.png web/icons/Icon-maskable-192.png
+  cp -f assets/images/logo.png web/icons/Icon-maskable-512.png
+  echo "✅ Favicon e iconos actualizados con assets/images/logo.png"
+fi
+
+# 6. Compilar la aplicación web para producción (Release Mode)
 echo "=== 🏗️ Compilando aplicación Web para Vercel ==="
 flutter build web --release
 

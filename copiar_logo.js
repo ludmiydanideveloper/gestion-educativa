@@ -54,9 +54,23 @@ if (foundPath) {
   fs.copyFileSync(foundPath, targetImage);
   fs.copyFileSync(foundPath, targetAsset);
   
+  // También copiar a favicon e iconos web
+  const webDir = path.join(projectDir, 'web');
+  const webIconsDir = path.join(webDir, 'icons');
+  if (fs.existsSync(webDir)) {
+    fs.copyFileSync(foundPath, path.join(webDir, 'favicon.png'));
+    if (fs.existsSync(webIconsDir)) {
+      fs.copyFileSync(foundPath, path.join(webIconsDir, 'Icon-192.png'));
+      fs.copyFileSync(foundPath, path.join(webIconsDir, 'Icon-512.png'));
+      fs.copyFileSync(foundPath, path.join(webIconsDir, 'Icon-maskable-192.png'));
+      fs.copyFileSync(foundPath, path.join(webIconsDir, 'Icon-maskable-512.png'));
+    }
+  }
+
   console.log(`✅ Imagen copiada perfectamente a:`);
   console.log(`   -> ${targetImage}`);
   console.log(`   -> ${targetAsset}`);
+  console.log(`   -> web/favicon.png y web/icons/`);
 } else {
   console.log(`❌ No se encontró ningún archivo logo en Descargas.`);
 }

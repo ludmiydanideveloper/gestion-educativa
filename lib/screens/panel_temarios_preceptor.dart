@@ -300,13 +300,15 @@ class _PanelTemariosPreceptorState extends State<PanelTemariosPreceptor> {
                     color: colorScheme.primaryContainer.withAlpha(50),
                     border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withAlpha(100))),
                   ),
-                  child: Column(
-                    children: [
-                      Row(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final isMobile = constraints.maxWidth < 650;
+                      return Column(
                         children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
+                          if (isMobile) ...[
+                            DropdownButtonFormField<String>(
                               value: _selectedCursoId,
+                              isExpanded: true,
                               decoration: InputDecoration(
                                 labelText: 'Curso Asignado',
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -322,11 +324,10 @@ class _PanelTemariosPreceptorState extends State<PanelTemariosPreceptor> {
                                 }
                               },
                             ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<String>(
                               value: _filterMateriaId,
+                              isExpanded: true,
                               decoration: InputDecoration(
                                 labelText: 'Asignatura / Carga Horaria',
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -337,32 +338,85 @@ class _PanelTemariosPreceptorState extends State<PanelTemariosPreceptor> {
                               items: _materias.map((m) => DropdownMenuItem(value: m['materia_id'] as String, child: Text(m['nombre_asignatura'] as String))).toList(),
                               onChanged: (val) => setState(() => _filterMateriaId = val),
                             ),
-                          ),
-                          if (!widget.isReadOnly) ...[
-                            const SizedBox(width: 14),
-                            FilledButton.icon(
-                              onPressed: () => _abrirModalRegistroTema(),
-                              icon: const Icon(Icons.add_rounded),
-                              label: const Text('Registrar Otra Clase'),
-                              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16)),
+                            if (!widget.isReadOnly) ...[
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.icon(
+                                  onPressed: () => _abrirModalRegistroTema(),
+                                  icon: const Icon(Icons.add_rounded),
+                                  label: const Text('Registrar Otra Clase'),
+                                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                                ),
+                              ),
+                            ],
+                          ] else
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: _selectedCursoId,
+                                    isExpanded: true,
+                                    decoration: InputDecoration(
+                                      labelText: 'Curso Asignado',
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                      prefixIcon: const Icon(Icons.class_rounded),
+                                      filled: true,
+                                      fillColor: Colors.white,
+                                    ),
+                                    items: _cursos.map((c) => DropdownMenuItem(value: c['curso_id'] as String, child: Text("${c['anio']} - ${c['division']}"))).toList(),
+                                    onChanged: (val) {
+                                      if (val != null) {
+                                        _selectedCursoId = val;
+                                        _cargarMateriasYTemarios(val);
+                                      }
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: DropdownButtonFormField<String>(
+                                    value: _filterMateriaId,
+                                    isExpanded: true,
+                                    decoration: InputDecoration(
+                                      labelText: 'Asignatura / Carga Horaria',
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                      prefixIcon: const Icon(Icons.book_rounded),
+                                      filled: true,
+                                      fillColor: Colors.white,
+                                    ),
+                                    items: _materias.map((m) => DropdownMenuItem(value: m['materia_id'] as String, child: Text(m['nombre_asignatura'] as String))).toList(),
+                                    onChanged: (val) => setState(() => _filterMateriaId = val),
+                                  ),
+                                ),
+                                if (!widget.isReadOnly) ...[
+                                  const SizedBox(width: 14),
+                                  FilledButton.icon(
+                                    onPressed: () => _abrirModalRegistroTema(),
+                                    icon: const Icon(Icons.add_rounded),
+                                    label: const Text('Registrar Otra Clase'),
+                                    style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16)),
+                                  ),
+                                ],
+                              ],
                             ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Icon(Icons.info_outline_rounded, size: 16, color: colorScheme.primary),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'El Libro de Temas genera automáticamente las fechas según los días de dictado de la asignatura en la carga horaria.',
-                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                            ),
+                          const SizedBox(height: 12),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.info_outline_rounded, size: 16, color: colorScheme.primary),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'El Libro de Temas genera automáticamente las fechas según los días de dictado de la asignatura en la carga horaria.',
+                                  style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
                 // Contenido principal en formato Libro de Aula
@@ -411,8 +465,8 @@ class _PanelTemariosPreceptorState extends State<PanelTemariosPreceptor> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Row(
                                           children: [
@@ -429,32 +483,40 @@ class _PanelTemariosPreceptorState extends State<PanelTemariosPreceptor> {
                                               ),
                                             ),
                                             const SizedBox(width: 14),
-                                            Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  'Clase del Día $fecha',
-                                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
-                                                ),
-                                                Text(
-                                                  registrado ? '✔ TEMARIO REGISTRADO EN LIBRO DE AULA' : '⏳ FECHA ASIGNADA - PENDIENTE DE COMPLETAR',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: registrado ? Colors.green.shade700 : Colors.amber.shade900,
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    'Clase del Día $fecha',
+                                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
                                                   ),
-                                                ),
-                                              ],
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    registrado ? '✔ TEMARIO REGISTRADO EN LIBRO DE AULA' : '⏳ FECHA ASIGNADA - PENDIENTE DE COMPLETAR',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: registrado ? Colors.green.shade700 : Colors.amber.shade900,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
                                           ],
                                         ),
-                                        if (!registrado && !widget.isReadOnly)
-                                          FilledButton.icon(
-                                            onPressed: () => _abrirModalRegistroTema(fechaPreestablecida: fecha),
-                                            icon: const Icon(Icons.edit_note_rounded, size: 18),
-                                            label: const Text('Completar Temario del Día'),
-                                            style: FilledButton.styleFrom(backgroundColor: Colors.amber.shade800),
+                                        if (!registrado && !widget.isReadOnly) ...[
+                                          const SizedBox(height: 14),
+                                          Align(
+                                            alignment: Alignment.centerRight,
+                                            child: FilledButton.icon(
+                                              onPressed: () => _abrirModalRegistroTema(fechaPreestablecida: fecha),
+                                              icon: const Icon(Icons.edit_note_rounded, size: 18),
+                                              label: const Text('Completar Temario del Día'),
+                                              style: FilledButton.styleFrom(backgroundColor: Colors.amber.shade800),
+                                            ),
                                           ),
+                                        ],
                                       ],
                                     ),
                                     if (registrado) ...[
