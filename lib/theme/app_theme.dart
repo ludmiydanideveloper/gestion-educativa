@@ -59,13 +59,13 @@ class AppTheme {
         ),
       ),
       // Tema de Tarjetas
-      cardTheme: CardTheme(
+      cardTheme: const CardThemeData(
         color: surfaceColor,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12.0),
-          side: const BorderSide(
+          borderRadius: BorderRadius.all(Radius.circular(12.0)),
+          side: BorderSide(
             color: borderSubtle,
             width: 1.0,
           ),
