@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
-import '../services/print_helper_web.dart';
+import '../services/print_helper.dart';
 import '../widgets/brand_widgets.dart';
 
 class PanelAdministracion extends StatefulWidget {

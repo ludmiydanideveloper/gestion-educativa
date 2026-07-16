@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../models/alumno_asistencia.dart';
-import '../services/print_helper_web.dart';
+import '../services/print_helper.dart';
 
 class PanelCalificaciones extends StatefulWidget {
   final String? materiaId;

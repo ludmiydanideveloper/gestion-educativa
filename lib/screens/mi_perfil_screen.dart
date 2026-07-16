@@ -2,9 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
-import '../services/print_helper_web.dart';
-// Importación condicional para selector de archivos nativo en web
-import 'dart:html' as html;
+import '../services/print_helper.dart';
 import '../widgets/app_drawer.dart';
 
 class MiPerfilScreen extends StatefulWidget {
@@ -151,63 +149,48 @@ class _MiPerfilScreenState extends State<MiPerfilScreen> with SingleTickerProvid
 
   void _seleccionarYSubirArchivoWeb(String tipoArchivo) {
     if (_uploading) return;
-    try {
-      final uploadInput = html.FileUploadInputElement();
-      uploadInput.accept = '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      uploadInput.click();
-
-      uploadInput.onChange.listen((e) async {
-        final files = uploadInput.files;
-        if (files != null && files.isNotEmpty) {
-          final file = files[0];
-          final extension = file.name.split('.').last.toUpperCase();
-          final formato = extension.contains('PDF') ? 'PDF' : 'WORD';
-
-          setState(() => _uploading = true);
-          final reader = html.FileReader();
-          reader.readAsDataUrl(file);
-          reader.onLoadEnd.listen((e) async {
-            final base64Data = reader.result as String;
-            try {
-              await _supabaseService.guardarArchivoPersonal(
-                authId: _authId,
-                tipoArchivo: tipoArchivo,
-                nombreArchivo: file.name,
-                formato: formato,
-                base64Data: base64Data,
-              );
-              await _cargarDatosPerfil();
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('✅ $tipoArchivo (${file.name}) subido y registrado exitosamente'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              }
-            } catch (err) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error al guardar archivo: $err'), backgroundColor: Colors.red),
-                );
-              }
-            } finally {
-              if (mounted) setState(() => _uploading = false);
-            }
-          });
+    setState(() => _uploading = true);
+    PrintHelper.seleccionarArchivoWeb(
+      onArchivoSeleccionado: (nombreArchivo, formato, base64Data) async {
+        try {
+          await _supabaseService.guardarArchivoPersonal(
+            authId: _authId,
+            tipoArchivo: tipoArchivo,
+            nombreArchivo: nombreArchivo,
+            formato: formato,
+            base64Data: base64Data,
+          );
+          await _cargarDatosPerfil();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('✅ $tipoArchivo ($nombreArchivo) subido y registrado exitosamente'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } catch (err) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error al guardar archivo: $err'), backgroundColor: Colors.red),
+            );
+          }
+        } finally {
+          if (mounted) setState(() => _uploading = false);
         }
-      });
-    } catch (err) {
-      debugPrint('Error en selector web: $err');
-      setState(() => _uploading = false);
-    }
+      },
+      onError: (err) {
+        debugPrint('Error en selector web: $err');
+        if (mounted) setState(() => _uploading = false);
+      },
+    );
   }
 
   void _abrirODescargarArchivo(Map<String, dynamic> archivo) {
     final base64Data = archivo['datos_base64'] as String?;
     if (base64Data != null && base64Data.isNotEmpty) {
       // Abrir en nueva pestaña o descargar
-      html.window.open(base64Data, '_blank');
+      PrintHelper.abrirArchivoWeb(base64Data);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No se pudo leer el contenido del archivo.'), backgroundColor: Colors.orange),

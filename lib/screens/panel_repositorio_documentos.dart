@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/print_helper_web.dart';
+import '../services/print_helper.dart';
 
 class PanelRepositorioDocumentos extends StatefulWidget {
   const PanelRepositorioDocumentos({super.key});

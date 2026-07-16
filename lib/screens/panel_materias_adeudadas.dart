@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/print_helper_web.dart';
+import '../services/print_helper.dart';
 
 class PanelMateriasAdeudadas extends StatefulWidget {
   const PanelMateriasAdeudadas({super.key});

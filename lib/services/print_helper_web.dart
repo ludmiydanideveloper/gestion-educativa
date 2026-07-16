@@ -818,4 +818,37 @@ class PrintHelper {
     if (mes >= 1 && mes <= 12) return meses[mes - 1];
     return 'mes actual';
   }
+
+  static void seleccionarArchivoWeb({
+    required Function(String nombreArchivo, String formato, String base64Data) onArchivoSeleccionado,
+    required Function(String error) onError,
+  }) {
+    try {
+      final uploadInput = html.FileUploadInputElement();
+      uploadInput.accept = '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      uploadInput.click();
+
+      uploadInput.onChange.listen((e) {
+        final files = uploadInput.files;
+        if (files != null && files.isNotEmpty) {
+          final file = files[0];
+          final extension = file.name.split('.').last.toUpperCase();
+          final formato = extension.contains('PDF') ? 'PDF' : 'WORD';
+
+          final reader = html.FileReader();
+          reader.readAsDataUrl(file);
+          reader.onLoadEnd.listen((e) {
+            final base64Data = reader.result as String;
+            onArchivoSeleccionado(file.name, formato, base64Data);
+          });
+        }
+      });
+    } catch (err) {
+      onError(err.toString());
+    }
+  }
+
+  static void abrirArchivoWeb(String base64Data) {
+    html.window.open(base64Data, '_blank');
+  }
 }

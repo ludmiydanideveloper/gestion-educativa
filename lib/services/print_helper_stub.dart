@@ -50,5 +50,16 @@ class PrintHelper {
   }) {
     throw UnsupportedError('La impresión solo está soportada en Web.');
   }
+
+  static void seleccionarArchivoWeb({
+    required Function(String nombreArchivo, String formato, String base64Data) onArchivoSeleccionado,
+    required Function(String error) onError,
+  }) {
+    throw UnsupportedError('La selección de archivos solo está soportada en Web.');
+  }
+
+  static void abrirArchivoWeb(String base64Data) {
+    throw UnsupportedError('Abrir archivos solo está soportado en Web.');
+  }
 }
 
