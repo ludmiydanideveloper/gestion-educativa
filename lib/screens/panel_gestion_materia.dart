@@ -109,15 +109,24 @@ class PanelGestionMateria extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
-                        const Icon(Icons.event_available_rounded, color: Colors.deepOrange, size: 22),
-                        const SizedBox(width: 10),
-                        const Expanded(
-                          child: Text(
-                            'Fechas Importantes (Evaluaciones y Entregas)',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.deepOrange),
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.event_available_rounded, color: Colors.deepOrange, size: 22),
+                            const SizedBox(width: 10),
+                            const Flexible(
+                              child: Text(
+                                'Fechas Importantes (Evaluaciones y Entregas)',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.deepOrange),
+                              ),
+                            ),
+                          ],
                         ),
                         TextButton.icon(
                           onPressed: () => _abrirCalendarioMateriaDialog(context),
@@ -126,13 +135,16 @@ class PanelGestionMateria extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    Row(
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.orange.shade200)),
                           child: const Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.quiz_rounded, size: 16, color: Colors.purple),
                               SizedBox(width: 6),
@@ -140,11 +152,11 @@ class PanelGestionMateria extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 10),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.orange.shade200)),
                           child: const Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.assignment_rounded, size: 16, color: Colors.blue),
                               SizedBox(width: 6),

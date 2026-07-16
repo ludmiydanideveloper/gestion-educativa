@@ -364,60 +364,98 @@ class _PanelLibroActasState extends State<PanelLibroActas> {
                 ),
               ),
             // Barra de Búsqueda y Filtro de Curso
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: TextField(
-                    decoration: InputDecoration(
-                      hintText: 'Buscar actas por título, contenido o firmantes...',
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onChanged: (val) => setState(() => _searchQuery = val),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 1,
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedCursoId,
-                    decoration: InputDecoration(
-                      labelText: 'Filtrar por Curso',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    items: [
-                      const DropdownMenuItem(value: 'TODOS', child: Text('Todos los Cursos')),
-                      ..._cursos.map((c) => DropdownMenuItem(
-                            value: c['curso_id'] as String,
-                            child: Text(c['identificador_division']?.toString() ?? 'Curso'),
-                          )),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth < 600) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Buscar actas por título, contenido o firmantes...',
+                          prefixIcon: const Icon(Icons.search_rounded),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onChanged: (val) => setState(() => _searchQuery = val),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: _selectedCursoId,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: 'Filtrar por Curso',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        items: [
+                          const DropdownMenuItem(value: 'TODOS', child: Text('Todos los Cursos')),
+                          ..._cursos.map((c) => DropdownMenuItem(
+                                value: c['curso_id'] as String,
+                                child: Text(c['identificador_division']?.toString() ?? 'Curso'),
+                              )),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _selectedCursoId = val);
+                            _cargarActas();
+                          }
+                        },
+                      ),
                     ],
-                    onChanged: (val) {
-                      if (val != null) {
-                        setState(() => _selectedCursoId = val);
-                        _cargarActas();
-                      }
-                    },
-                  ),
-                ),
-              ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Buscar actas por título, contenido o firmantes...',
+                          prefixIcon: const Icon(Icons.search_rounded),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onChanged: (val) => setState(() => _searchQuery = val),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 1,
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedCursoId,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: 'Filtrar por Curso',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        items: [
+                          const DropdownMenuItem(value: 'TODOS', child: Text('Todos los Cursos')),
+                          ..._cursos.map((c) => DropdownMenuItem(
+                                value: c['curso_id'] as String,
+                                child: Text(c['identificador_division']?.toString() ?? 'Curso'),
+                              )),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _selectedCursoId = val);
+                            _cargarActas();
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 16),
             // Chips de Categorías (Académicas, Accidentes, Reuniones)
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _categoriaChip('TODAS', 'Todas las Actas', Icons.folder_copy_rounded),
-                  const SizedBox(width: 8),
-                  _categoriaChip('ACADEMICAS', 'Académicas', Icons.school_rounded),
-                  const SizedBox(width: 8),
-                  _categoriaChip('ACCIDENTES', 'De Accidentes / Disciplina', Icons.local_hospital_rounded),
-                  const SizedBox(width: 8),
-                  _categoriaChip('REUNIONES', 'De Reuniones', Icons.groups_rounded),
-                ],
-              ),
+            Wrap(
+              spacing: 8.0,
+              runSpacing: 8.0,
+              children: [
+                _categoriaChip('TODAS', 'Todas las Actas', Icons.folder_copy_rounded),
+                _categoriaChip('ACADEMICAS', 'Académicas', Icons.school_rounded),
+                _categoriaChip('ACCIDENTES', 'De Accidentes / Disciplina', Icons.local_hospital_rounded),
+                _categoriaChip('REUNIONES', 'De Reuniones', Icons.groups_rounded),
+              ],
             ),
             const SizedBox(height: 16),
             // Lista de Actas

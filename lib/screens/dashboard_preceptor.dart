@@ -274,12 +274,98 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
             onPressed: () =>
                 context.read<AsistenciaProvider>().cargarAlumnos(),
           ),
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: 'Notificaciones y Alertas',
+              onPressed: () => _mostrarModalNotificacionesDocente(context),
+            ),
+            Positioned(
+              right: 12,
+              top: 12,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ),
         IconButton(
           icon: const Icon(Icons.logout_rounded),
           tooltip: 'Cerrar sesión',
           onPressed: () => SupabaseService().signOut(),
         ),
       ],
+    );
+  }
+
+  void _mostrarModalNotificacionesDocente(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.notifications_active_rounded, color: Color(0xFF1E3A8A)),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Notificaciones del Docente',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+              const Divider(),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFE0E7FF),
+                  child: Icon(Icons.mail_rounded, color: Color(0xFF3B82F6), size: 20),
+                ),
+                title: const Text('Cuaderno Digital y Mensajes', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Comunicaciones de familias y preceptoría pendientes de revisión.'),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BandejaMensajes()));
+                },
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFFEF3C7),
+                  child: Icon(Icons.assignment_turned_in_rounded, color: Color(0xFFD97706), size: 20),
+                ),
+                title: const Text('Estado de Planillas de Asistencia', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Verifique y sincronice las cargas diarias de sus cursos asignados.'),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  setState(() => _seccionActual = _DocenteSection.asistencia);
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
     );
   }
 

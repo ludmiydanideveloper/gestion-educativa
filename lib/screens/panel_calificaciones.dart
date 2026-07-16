@@ -1263,51 +1263,59 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
         elevation: 0,
         scrolledUnderElevation: 1,
         actions: [
-          ElevatedButton.icon(
-            icon: _isSaving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.save_rounded),
-            label: const Text('Guardar Cambios', style: TextStyle(fontWeight: FontWeight.bold)),
-            onPressed: _isSaving ? null : _guardarTodasLasNotas,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade700,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ElevatedButton.icon(
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.save_rounded),
+                  label: const Text('Guardar Cambios', style: TextStyle(fontWeight: FontWeight.bold)),
+                  onPressed: _isSaving ? null : _guardarTodasLasNotas,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.settings_outlined, size: 18),
+                  label: const Text('Configurar Rúbrica', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onPressed: _abrirModalRubrica,
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.analytics_outlined, size: 18),
+                  label: const Text('Generar Seguimiento', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onPressed: _generarNotaSeguimientoInforme,
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.print_outlined, size: 18),
+                  label: const Text('Planilla Materia', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onPressed: _imprimirPlanillaCalificaciones,
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.description_outlined, size: 18),
+                  label: const Text('Boletín General', style: TextStyle(fontWeight: FontWeight.w600)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueGrey.shade800,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => _imprimirBoletinGeneralCurso(),
+                ),
+                const SizedBox(width: 12),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.settings_outlined, size: 18),
-            label: const Text('Configurar Rúbrica', style: TextStyle(fontWeight: FontWeight.w600)),
-            onPressed: _abrirModalRubrica,
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.analytics_outlined, size: 18),
-            label: const Text('Generar Seguimiento', style: TextStyle(fontWeight: FontWeight.w600)),
-            onPressed: _generarNotaSeguimientoInforme,
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.print_outlined, size: 18),
-            label: const Text('Planilla Materia', style: TextStyle(fontWeight: FontWeight.w600)),
-            onPressed: _imprimirPlanillaCalificaciones,
-          ),
-          const SizedBox(width: 8),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.description_outlined, size: 18),
-            label: const Text('Boletín General', style: TextStyle(fontWeight: FontWeight.w600)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blueGrey.shade800,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => _imprimirBoletinGeneralCurso(),
-          ),
-          const SizedBox(width: 12),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -1333,76 +1341,129 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                      child: Row(
-                        children: [
-                          Icon(Icons.menu_book_rounded, color: colorScheme.primary),
-                          const SizedBox(width: 16),
-                          const Text(
-                            'Materia Seleccionada:',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _materias.isEmpty
-                                ? const Text('Sin materias asignadas')
-                                : DropdownButtonHideUnderline(
-                                    child: DropdownButton<String>(
-                                      value: _selectedMateriaId,
-                                      isExpanded: true,
-                                      items: _materias.map((m) {
-                                        return DropdownMenuItem<String>(
-                                          value: m['materia_id'] as String,
-                                          child: Text(m['nombre_asignatura'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                        );
-                                      }).toList(),
-                                      onChanged: (val) async {
-                                        if (val != null) {
-                                          setState(() {
-                                            _selectedMateriaId = val;
-                                            _isLoading = true;
-                                          });
-                                          try {
-                                            await _cargarPlanillaMateria();
-                                          } catch (e) {
-                                            _mostrarError('Error al cambiar de materia: $e');
-                                          } finally {
-                                            setState(() => _isLoading = false);
-                                          }
-                                        }
-                                      },
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (constraints.maxWidth < 550) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.menu_book_rounded, color: colorScheme.primary),
+                                    const SizedBox(width: 10),
+                                    const Text(
+                                      'Materia Seleccionada:',
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                                     ),
-                                  ),
-                          ),
-                        ],
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: _materias.isEmpty
+                                      ? const Text('Sin materias asignadas')
+                                      : DropdownButtonHideUnderline(
+                                          child: DropdownButton<String>(
+                                            value: _selectedMateriaId,
+                                            isExpanded: true,
+                                            items: _materias.map((m) {
+                                              return DropdownMenuItem<String>(
+                                                value: m['materia_id'] as String,
+                                                child: Text(m['nombre_asignatura'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                              );
+                                            }).toList(),
+                                            onChanged: (val) async {
+                                              if (val != null) {
+                                                setState(() {
+                                                  _selectedMateriaId = val;
+                                                  _isLoading = true;
+                                                });
+                                                try {
+                                                  await _cargarPlanillaMateria();
+                                                } catch (e) {
+                                                  _mostrarError('Error al cambiar de materia: $e');
+                                                } finally {
+                                                  setState(() => _isLoading = false);
+                                                }
+                                              }
+                                            },
+                                          ),
+                                        ),
+                                ),
+                              ],
+                            );
+                          }
+                          return Row(
+                            children: [
+                              Icon(Icons.menu_book_rounded, color: colorScheme.primary),
+                              const SizedBox(width: 16),
+                              const Text(
+                                'Materia Seleccionada:',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _materias.isEmpty
+                                    ? const Text('Sin materias asignadas')
+                                    : DropdownButtonHideUnderline(
+                                        child: DropdownButton<String>(
+                                          value: _selectedMateriaId,
+                                          isExpanded: true,
+                                          items: _materias.map((m) {
+                                            return DropdownMenuItem<String>(
+                                              value: m['materia_id'] as String,
+                                              child: Text(m['nombre_asignatura'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                            );
+                                          }).toList(),
+                                          onChanged: (val) async {
+                                            if (val != null) {
+                                              setState(() {
+                                                _selectedMateriaId = val;
+                                                _isLoading = true;
+                                              });
+                                              try {
+                                                await _cargarPlanillaMateria();
+                                              } catch (e) {
+                                                _mostrarError('Error al cambiar de materia: $e');
+                                              } finally {
+                                                setState(() => _isLoading = false);
+                                              }
+                                            }
+                                          },
+                                        ),
+                                      ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ),
                   const SizedBox(height: 16),
                   
                   // Leyenda de Categorías de Evaluación
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8.0,
+                    runSpacing: 8.0,
                     children: _categorias.map((cat) {
                       final color = _obtenerColorCategoria(cat['nombre']);
                       final peso = (cat['peso_porcentaje'] as num).toInt();
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: Chip(
-                          labelPadding: const EdgeInsets.symmetric(horizontal: 4.0),
-                          avatar: CircleAvatar(
-                            backgroundColor: Colors.white24,
-                            child: Text(
-                              '${peso}%',
-                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
+                      return Chip(
+                        labelPadding: const EdgeInsets.symmetric(horizontal: 4.0),
+                        avatar: CircleAvatar(
+                          backgroundColor: Colors.white24,
+                          child: Text(
+                            '${peso}%',
+                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                           ),
-                          label: Text(
-                            cat['nombre'],
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                          ),
-                          backgroundColor: color,
-                          visualDensity: VisualDensity.compact,
                         ),
+                        label: Text(
+                          cat['nombre'],
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                        backgroundColor: color,
+                        visualDensity: VisualDensity.compact,
                       );
                     }).toList(),
                   ),

@@ -346,15 +346,21 @@ class _PanelBancoEvaluacionesState extends State<PanelBancoEvaluaciones> {
                             const SizedBox(height: 14),
                             Divider(color: Colors.grey.shade200),
                             const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            Wrap(
+                              alignment: WrapAlignment.spaceBetween,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 8,
+                              runSpacing: 8,
                               children: [
                                 Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(Icons.person_rounded, size: 16, color: Colors.grey.shade600),
                                     const SizedBox(width: 6),
-                                    Text('Subido por: ${item['subido_por'] ?? 'Docente'}',
-                                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+                                    Flexible(
+                                      child: Text('Subido por: ${item['subido_por'] ?? 'Docente'}',
+                                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+                                    ),
                                   ],
                                 ),
                                 OutlinedButton.icon(
@@ -383,28 +389,41 @@ class _PanelBancoEvaluacionesState extends State<PanelBancoEvaluaciones> {
                                   borderRadius: BorderRadius.circular(10),
                                   border: Border.all(color: Colors.amber.shade300),
                                 ),
-                                child: Row(
+                                child: Wrap(
+                                  alignment: WrapAlignment.spaceBetween,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 10,
+                                  runSpacing: 10,
                                   children: [
-                                    const Icon(Icons.admin_panel_settings_rounded, color: Colors.amber, size: 20),
-                                    const SizedBox(width: 10),
-                                    const Expanded(
-                                      child: Text(
-                                        'Revisión Administrativa requerida para publicar en el banco institucional:',
-                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                      ),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.admin_panel_settings_rounded, color: Colors.amber, size: 20),
+                                        const SizedBox(width: 10),
+                                        const Flexible(
+                                          child: Text(
+                                            'Revisión Administrativa requerida para publicar en el banco institucional:',
+                                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(width: 10),
-                                    TextButton.icon(
-                                      onPressed: () => _cambiarEstado(item, 'RECHAZADA'),
-                                      icon: const Icon(Icons.close_rounded, color: Colors.red, size: 16),
-                                      label: const Text('Rechazar', style: TextStyle(color: Colors.red, fontSize: 12)),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    FilledButton.icon(
-                                      onPressed: () => _cambiarEstado(item, 'APROBADA'),
-                                      icon: const Icon(Icons.check_rounded, size: 16),
-                                      label: const Text('Aprobar Evaluación', style: TextStyle(fontSize: 12)),
-                                      style: FilledButton.styleFrom(backgroundColor: Colors.green),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        TextButton.icon(
+                                          onPressed: () => _cambiarEstado(item, 'RECHAZADA'),
+                                          icon: const Icon(Icons.close_rounded, color: Colors.red, size: 16),
+                                          label: const Text('Rechazar', style: TextStyle(color: Colors.red, fontSize: 12)),
+                                        ),
+                                        FilledButton.icon(
+                                          onPressed: () => _cambiarEstado(item, 'APROBADA'),
+                                          icon: const Icon(Icons.check_rounded, size: 16),
+                                          label: const Text('Aprobar Evaluación', style: TextStyle(fontSize: 12)),
+                                          style: FilledButton.styleFrom(backgroundColor: Colors.green),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
