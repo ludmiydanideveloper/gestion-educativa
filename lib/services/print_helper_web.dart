@@ -235,12 +235,13 @@ class PrintHelper {
     ''';
 
     // 3. Abrir en pestaña nueva e inyectar HTML
-    final printWindow = html.window.open('', '_blank');
-    if (printWindow != null) {
-      final document = js_util.getProperty(printWindow, 'document');
-      js_util.callMethod(document, 'write', [htmlContent]);
-      js_util.callMethod(document, 'close', []);
-    }
+    final blob = html.Blob([htmlContent], 'text/html');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.window.open(url, '_blank');
+    
+    Future.delayed(const Duration(seconds: 10), () {
+      html.Url.revokeObjectUrl(url);
+    });
   }
 
   static void imprimirAsistencia({
@@ -395,12 +396,13 @@ class PrintHelper {
       </html>
     ''';
 
-    final printWindow = html.window.open('', '_blank');
-    if (printWindow != null) {
-      final document = js_util.getProperty(printWindow, 'document');
-      js_util.callMethod(document, 'write', [htmlContent]);
-      js_util.callMethod(document, 'close', []);
-    }
+    final blob = html.Blob([htmlContent], 'text/html');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.window.open(url, '_blank');
+    
+    Future.delayed(const Duration(seconds: 10), () {
+      html.Url.revokeObjectUrl(url);
+    });
   }
 
   static void imprimirHTML({required String titulo, required String htmlContentBody}) {
@@ -443,12 +445,13 @@ class PrintHelper {
       </html>
     ''';
 
-    final printWindow = html.window.open('', '_blank');
-    if (printWindow != null) {
-      final document = js_util.getProperty(printWindow, 'document');
-      js_util.callMethod(document, 'write', [htmlContent]);
-      js_util.callMethod(document, 'close', []);
-    }
+    final blob = html.Blob([htmlContent], 'text/html');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.window.open(url, '_blank');
+    
+    Future.delayed(const Duration(seconds: 10), () {
+      html.Url.revokeObjectUrl(url);
+    });
   }
 
   static void imprimirTrayectoriaYAnalitico({
@@ -570,12 +573,13 @@ class PrintHelper {
       </html>
     ''';
 
-    final printWindow = html.window.open('', '_blank');
-    if (printWindow != null) {
-      final document = js_util.getProperty(printWindow, 'document');
-      js_util.callMethod(document, 'write', [htmlContent]);
-      js_util.callMethod(document, 'close', []);
-    }
+    final blob = html.Blob([htmlContent], 'text/html');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.window.open(url, '_blank');
+    
+    Future.delayed(const Duration(seconds: 10), () {
+      html.Url.revokeObjectUrl(url);
+    });
   }
 
   static void imprimirConstanciaAlumnoRegular({
@@ -640,12 +644,13 @@ class PrintHelper {
       </html>
     ''';
 
-    final printWindow = html.window.open('', '_blank');
-    if (printWindow != null) {
-      final document = js_util.getProperty(printWindow, 'document');
-      js_util.callMethod(document, 'write', [htmlContent]);
-      js_util.callMethod(document, 'close', []);
-    }
+    final blob = html.Blob([htmlContent], 'text/html');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.window.open(url, '_blank');
+    
+    Future.delayed(const Duration(seconds: 10), () {
+      html.Url.revokeObjectUrl(url);
+    });
   }
 
   static void imprimirFaltasPorMateria({
@@ -806,12 +811,13 @@ class PrintHelper {
       </html>
     ''';
 
-    final printWindow = html.window.open('', '_blank');
-    if (printWindow != null) {
-      final document = js_util.getProperty(printWindow, 'document');
-      js_util.callMethod(document, 'write', [htmlContent]);
-      js_util.callMethod(document, 'close', []);
-    }
+    final blob = html.Blob([htmlContent], 'text/html');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.window.open(url, '_blank');
+    
+    Future.delayed(const Duration(seconds: 10), () {
+      html.Url.revokeObjectUrl(url);
+    });
   }
 
   static String _nombreMes(int mes) {
