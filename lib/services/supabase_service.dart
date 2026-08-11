@@ -537,7 +537,7 @@ class SupabaseService {
 
       final materiaIds = materias.map((m) => m['materia_id'] as String).toList();
 
-      final catRes = await _client.from('aca_categorias_nota').select('id, materia_id, nombre, peso_porcentaje').inFilter('materia_id', materiaIds);
+      final catRes = await _client.from('aca_categorias_nota').select('id, nombre, peso_porcentaje');
       final categorias = List<Map<String, dynamic>>.from(catRes);
 
       final actRes = await _client.from('aca_actividades').select('id, materia_id, categoria_id, titulo, fecha').inFilter('materia_id', materiaIds);
