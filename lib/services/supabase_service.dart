@@ -533,7 +533,7 @@ class SupabaseService {
       final materiasRes = await queryMat;
       final materias = List<Map<String, dynamic>>.from(materiasRes);
 
-      if (materias.isEmpty) return {'materias': [], 'actividades': [], 'calificaciones': [], 'categorias': []};
+      if (materias.isEmpty) return {'materias': [], 'actividades': [], 'calificaciones': [], 'categorias': [], 'rubricas': [], 'cierres': []};
 
       final materiaIds = materias.map((m) => m['materia_id'] as String).toList();
 
@@ -543,26 +543,42 @@ class SupabaseService {
       final actRes = await _client.from('aca_actividades').select('id, materia_id, categoria_id, titulo, fecha').inFilter('materia_id', materiaIds);
       final actividades = List<Map<String, dynamic>>.from(actRes);
 
-      if (actividades.isEmpty) return {'materias': materias, 'actividades': [], 'calificaciones': [], 'categorias': categorias};
-
-      final actIds = actividades.map((a) => a['id'] as String).toList();
-
-      var queryCalif = _client.from('aca_calificaciones').select('id, actividad_id, alumno_id, nota_numerica').inFilter('actividad_id', actIds);
-      if (alumnosIds != null && alumnosIds.isNotEmpty) {
-        queryCalif = queryCalif.inFilter('alumno_id', alumnosIds);
+      List<Map<String, dynamic>> calificaciones = [];
+      if (actividades.isNotEmpty) {
+        final actIds = actividades.map((a) => a['id'] as String).toList();
+        var queryCalif = _client.from('aca_calificaciones').select('id, actividad_id, alumno_id, nota_numerica').inFilter('actividad_id', actIds);
+        if (alumnosIds != null && alumnosIds.isNotEmpty) {
+          queryCalif = queryCalif.inFilter('alumno_id', alumnosIds);
+        }
+        final califRes = await queryCalif;
+        calificaciones = List<Map<String, dynamic>>.from(califRes);
       }
-      final califRes = await queryCalif;
-      final calificaciones = List<Map<String, dynamic>>.from(califRes);
+      
+      var queryRubricas = _client.from('aca_rubricas_cualitativas').select('*').inFilter('materia_id', materiaIds);
+      if (alumnosIds != null && alumnosIds.isNotEmpty) {
+        queryRubricas = queryRubricas.inFilter('alumno_id', alumnosIds);
+      }
+      final rubricasRes = await queryRubricas;
+      final rubricas = List<Map<String, dynamic>>.from(rubricasRes);
+
+      var queryCierres = _client.from('aca_cierres_etapa').select('*').inFilter('materia_id', materiaIds);
+      if (alumnosIds != null && alumnosIds.isNotEmpty) {
+        queryCierres = queryCierres.inFilter('alumno_id', alumnosIds);
+      }
+      final cierresRes = await queryCierres;
+      final cierres = List<Map<String, dynamic>>.from(cierresRes);
 
       return {
         'materias': materias,
         'actividades': actividades,
         'calificaciones': calificaciones,
         'categorias': categorias,
+        'rubricas': rubricas,
+        'cierres': cierres,
       };
     } catch (e) {
       print('Error al obtener datos del boletín completo: $e');
-      return {'materias': [], 'actividades': [], 'calificaciones': [], 'categorias': []};
+      return {'materias': [], 'actividades': [], 'calificaciones': [], 'categorias': [], 'rubricas': [], 'cierres': []};
     }
   }
 
@@ -1392,7 +1408,7 @@ class SupabaseService {
         }
       }
       if (destinatariosRoles.contains('Alumnos de 1° SEC') || destinatariosRoles.contains('Alumnos de 2° SEC') || destinatariosRoles.contains('Familias / Tutores')) {
-        final res = await _client.from('usr_alumnos').select('auth_id');
+        final res = await _client.from('usr_legajo_alumno').select('auth_id');
         for (var r in res) {
           if (r['auth_id'] != null) authIds.add(r['auth_id'].toString());
         }
@@ -2159,6 +2175,16 @@ class SupabaseService {
         .select('*, acad_materias(nombre_asignatura)')
         .eq('boletin_id', boletinId);
     return List<Map<String, dynamic>>.from(res);
+  }
+
+  Future<void> guardarRubricasCualitativas(List<Map<String, dynamic>> rubricas) async {
+    for (var rubrica in rubricas) {
+      await _client.from('aca_rubricas_cualitativas').upsert(rubrica, onConflict: 'alumno_id, materia_id, etapa');
+    }
+  }
+
+  Future<void> guardarCierreEtapa(Map<String, dynamic> cierre) async {
+    await _client.from('aca_cierres_etapa').upsert(cierre, onConflict: 'alumno_id, materia_id, etapa');
   }
 }
 
