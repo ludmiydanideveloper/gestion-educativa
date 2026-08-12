@@ -1117,11 +1117,13 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
           filasMaterias.add('''
             <tr>
-              <td style="font-weight:bold; text-align:left;">$nombreMat</td>
-              <td><span class="badge $badgeClass">${promedioRite != null ? promedioRite.toStringAsFixed(1) : "-"}</span></td>
-              <td style="font-weight:bold;">$condicionRite</td>
-              <td style="font-weight:bold; color:#b76e00;">$textoConducta</td>
-              <td style="text-align:left; font-style:italic; color:#444;">$textoSeguimiento</td>
+              <td style="font-weight:bold; text-align:left; padding: 12px 8px; border: 1px solid #eee; font-size: 11px; color: #444;">$nombreMat</td>
+              <td style="text-align:center; padding: 12px 8px; border: 1px solid #eee; font-size: 11px; font-weight: bold; color: #777;">
+                <div style="background-color: #e2e3e5; display: inline-block; padding: 2px 10px; border-radius: 4px;">${promedioRite != null ? promedioRite.toStringAsFixed(1) : "-"}</div>
+              </td>
+              <td style="font-weight:bold; text-align:center; padding: 12px 8px; border: 1px solid #eee; font-size: 11px; color: #444;">En Proceso</td>
+              <td style="font-weight:bold; color:#b76e00; text-align:center; padding: 12px 8px; border: 1px solid #eee; font-size: 11px;">-</td>
+              <td style="text-align:left; font-style:italic; color:#666; padding: 12px 8px; border: 1px solid #eee; font-size: 11px;">En proceso</td>
             </tr>
           ''');
         }
@@ -1129,25 +1131,27 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
         final tablaMateriaHtml = filasMaterias.join('');
 
         boletinesHtml.add('''
-          <div style="padding: 25px; border: 2px solid #333; border-radius: 8px; margin-bottom: 40px; page-break-after: always; background: #fff;">
-            <div style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 20px;">
-              <h1 style="margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px;">Instituto Alejandro Baradero</h1>
-              <h2 style="margin: 5px 0 0 0; font-size: 18px; color: #444;">Boletín Oficial de Calificaciones, Conducta y Seguimiento</h2>
+          <div style="padding: 25px; margin-bottom: 40px; page-break-after: always; background: #fff;">
+            <div style="text-align: center; border-bottom: 2px solid #5E3A8C; padding-bottom: 5px; margin-bottom: 5px;">
+              <h1 style="margin: 0; font-size: 20px; text-transform: uppercase; letter-spacing: 1px; color: #5E3A8C;">Instituto Alejandro Baradero</h1>
+            </div>
+            <div style="text-align: center; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px;">
+                <h2 style="margin: 0; font-size: 14px; color: #333; font-weight: bold;">Boletín Oficial de Calificaciones, Conducta y Seguimiento</h2>
             </div>
 
-            <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 15px;">
-              <div><strong>Alumno/a:</strong> ${alumno.nombre}</div>
-              <div><strong>Fecha de Emisión:</strong> ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}</div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 12px; font-weight: bold;">
+              <div>Alumno/a: <span style="font-weight: normal;">${alumno.nombre.toUpperCase()}</span></div>
+              <div>Fecha de Emisión: <span style="font-weight: normal;">${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}</span></div>
             </div>
 
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 11px;">
               <thead>
-                <tr style="background-color: #f2f2f2;">
-                  <th style="padding: 10px; border: 1px solid #ccc; text-align: left; width: 26%;">Asignatura / Materia</th>
-                  <th style="padding: 10px; border: 1px solid #ccc; text-align: center; width: 14%;">Nota RITE Final</th>
-                  <th style="padding: 10px; border: 1px solid #ccc; text-align: center; width: 20%;">Condición RITE</th>
-                  <th style="padding: 10px; border: 1px solid #ccc; text-align: center; width: 14%;">Conducta Diaria</th>
-                  <th style="padding: 10px; border: 1px solid #ccc; text-align: left; width: 26%;">Informe / Seguimiento</th>
+                <tr style="background-color: #f9f9f9;">
+                  <th style="padding: 12px 8px; border: 1px solid #e0e0e0; text-align: left; width: 30%; color: #666; font-weight: bold;">Asignatura / Materia</th>
+                  <th style="padding: 12px 8px; border: 1px solid #e0e0e0; text-align: center; width: 15%; color: #666; font-weight: bold;">Nota RITE Final</th>
+                  <th style="padding: 12px 8px; border: 1px solid #e0e0e0; text-align: center; width: 20%; color: #666; font-weight: bold;">Condición RITE</th>
+                  <th style="padding: 12px 8px; border: 1px solid #e0e0e0; text-align: center; width: 15%; color: #666; font-weight: bold;">Conducta Diaria</th>
+                  <th style="padding: 12px 8px; border: 1px solid #e0e0e0; text-align: left; width: 20%; color: #666; font-weight: bold;">Informe / Seguimiento</th>
                 </tr>
               </thead>
               <tbody>
@@ -1155,10 +1159,10 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               </tbody>
             </table>
 
-            <div style="margin-top: 60px; display: flex; justify-content: space-around; text-align: center;">
-              <div style="width: 28%; border-top: 1px solid #333; padding-top: 8px;"><strong>Firma Dirección</strong></div>
-              <div style="width: 28%; border-top: 1px solid #333; padding-top: 8px;"><strong>Firma Docente / Preceptor</strong></div>
-              <div style="width: 28%; border-top: 1px solid #333; padding-top: 8px;"><strong>Firma Madre / Padre / Tutor</strong></div>
+            <div style="margin-top: 80px; display: flex; justify-content: space-between; text-align: center; font-size: 12px;">
+              <div style="width: 30%; border-top: 1px solid #777; padding-top: 5px; font-weight: bold; color: #444;">Firma Dirección</div>
+              <div style="width: 30%; border-top: 1px solid #777; padding-top: 5px; font-weight: bold; color: #444;">Firma Docente / Preceptor</div>
+              <div style="width: 30%; border-top: 1px solid #777; padding-top: 5px; font-weight: bold; color: #444;">Firma Madre / Padre / Tutor</div>
             </div>
           </div>
         ''');
