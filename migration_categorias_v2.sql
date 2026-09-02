@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS aca_config_materia (
 -- RLS para la nueva tabla
 ALTER TABLE aca_config_materia ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "docentes_config_materia_all" ON aca_config_materia
+CREATE POLICY "docentes_config_materia_all" ON aca_config_materia
   FOR ALL TO authenticated
   USING (
     (auth.jwt() -> 'user_metadata' ->> 'rol')
