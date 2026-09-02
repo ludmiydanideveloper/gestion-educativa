@@ -1219,6 +1219,9 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             calFinal = nota2.toStringAsFixed(1);
           }
 
+          final nota1Str = nota1 != null ? nota1.toStringAsFixed(0) : '';
+          final nota2Str = nota2 != null ? nota2.toStringAsFixed(0) : '';
+
           filasMaterias.add('''
             <tr>
               <td class="td-mat">$nombreMat</td>
@@ -1231,7 +1234,9 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               <td class="td-c">$aic</td>
               <td class="td-c"></td>
               <td class="td-c td-tray">$resumen1</td>
+              <td class="td-c td-final">$nota1Str</td>
               <td class="td-c td-tray">$resumen2</td>
+              <td class="td-c td-final">$nota2Str</td>
               <td class="td-c">$intDic</td>
               <td class="td-c">$intFeb</td>
               <td class="td-c td-final">$calFinal</td>
@@ -1274,7 +1279,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               <thead>
                 <tr>
                   <th rowspan="2" class="th-mat">MATERIA</th>
-                  <th colspan="13" class="th-group">CRITERIOS Y CALIFICACIÓN</th>
+                  <th colspan="15" class="th-group">CRITERIOS Y CALIFICACIÓN</th>
                 </tr>
                 <tr>
                   <th class="th-r"><span class="rot">Apropiación de los contenidos trabajados</span></th>
@@ -1286,7 +1291,9 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                   <th class="th-r"><span class="rot">Cumplimiento de los AIC*</span></th>
                   <th class="th-r"><span class="rot">TOTAL INASISTENCIAS</span></th>
                   <th class="th-r"><span class="rot">RESUMEN DE TRAYECTORIA 1° ETAPA</span></th>
+                  <th class="th-r"><span class="rot">CALIFICACIÓN 1° ETAPA</span></th>
                   <th class="th-r"><span class="rot">RESUMEN DE TRAYECTORIA 2° ETAPA</span></th>
+                  <th class="th-r"><span class="rot">CALIFICACIÓN 2° ETAPA</span></th>
                   <th class="th-r"><span class="rot">INTENSIFICACIÓN DICIEMBRE</span></th>
                   <th class="th-r"><span class="rot">INTENSIFICACIÓN FEBRERO</span></th>
                   <th class="th-r"><span class="rot">CALIFICACIÓN FINAL</span></th>
@@ -1296,10 +1303,10 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                 $tablaMateriaHtml
                 <tr>
                   <td class="td-foot" colspan="9">TOTAL DE INASISTENCIAS DIARIAS</td>
-                  <td class="td-c" colspan="5"></td>
+                  <td class="td-c" colspan="7"></td>
                 </tr>
                 <tr>
-                  <td class="td-foot" colspan="14" style="height:28px;">INFORME DE PRECEPTORÍA</td>
+                  <td class="td-foot" colspan="16" style="height:28px;">INFORME DE PRECEPTORÍA</td>
                 </tr>
               </tbody>
             </table>
