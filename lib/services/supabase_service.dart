@@ -335,22 +335,27 @@ class SupabaseService {
     return docenteData['docente_id'] as String;
   }
 
-  /// Crea una nueva actividad académica para una materia y categoría específica
+  /// Crea una nueva actividad académica para una materia y categoría específica.
+  /// [pesoPorc]: peso opcional en % para el modo "Porcentaje por Actividad".
   Future<Map<String, dynamic>> crearActividad({
     required String materiaId,
     required String categoriaId,
     required String titulo,
     required DateTime fecha,
+    double? pesoPorc,
   }) async {
     final docenteId = await obtenerDocenteIdActual();
-    
-    final response = await _client.from('aca_actividades').insert({
+
+    final data = <String, dynamic>{
       'docente_id': docenteId,
       'materia_id': materiaId,
       'categoria_id': categoriaId,
       'titulo': titulo,
       'fecha': fecha.toIso8601String().substring(0, 10),
-    }).select().single();
+    };
+    if (pesoPorc != null) data['peso_porcentaje_actividad'] = pesoPorc;
+
+    final response = await _client.from('aca_actividades').insert(data).select().single();
     
     // Notificar a Administración sobre creación de actividad pedagógica
     obtenerAuthIdsAdministracion().then((adminIds) {
@@ -364,11 +369,12 @@ class SupabaseService {
     return Map<String, dynamic>.from(response);
   }
 
-  /// Obtiene todas las actividades creadas para una materia específica
+  /// Obtiene todas las actividades creadas para una materia específica,
+  /// incluyendo el peso individual por actividad (modo Porcentaje).
   Future<List<Map<String, dynamic>>> obtenerActividades(String materiaId) async {
     final response = await _client
         .from('aca_actividades')
-        .select('id, docente_id, materia_id, categoria_id, titulo, fecha, aca_categorias_nota(nombre, peso_porcentaje)')
+        .select('id, docente_id, materia_id, categoria_id, titulo, fecha, peso_porcentaje_actividad, aca_categorias_nota(nombre, peso_porcentaje)')
         .eq('materia_id', materiaId)
         .order('fecha', ascending: true);
     return List<Map<String, dynamic>>.from(response);
@@ -533,40 +539,92 @@ class SupabaseService {
       final materiasRes = await queryMat;
       final materias = List<Map<String, dynamic>>.from(materiasRes);
 
-      if (materias.isEmpty) return {'materias': [], 'actividades': [], 'calificaciones': [], 'categorias': [], 'rubricas': [], 'cierres': []};
+      if (materias.isEmpty) {
+        return {
+          'materias': [], 'actividades': [], 'calificaciones': [],
+          'categorias': [], 'rubricas': [], 'cierres': [],
+          'identificadorDivision': '', 'alumnosDemoData': <String, Map<String, dynamic>>{},
+        };
+      }
 
       final materiaIds = materias.map((m) => m['materia_id'] as String).toList();
 
-      final catRes = await _client.from('aca_categorias_nota').select('id, nombre, peso_porcentaje');
+      // Bug fix: restaurado materia_id en SELECT e inFilter para que catsMat no quede vacío
+      final catRes = await _client
+          .from('aca_categorias_nota')
+          .select('id, materia_id, nombre, peso_porcentaje')
+          .inFilter('materia_id', materiaIds);
       final categorias = List<Map<String, dynamic>>.from(catRes);
 
-      final actRes = await _client.from('aca_actividades').select('id, materia_id, categoria_id, titulo, fecha').inFilter('materia_id', materiaIds);
+      final actRes = await _client
+          .from('aca_actividades')
+          .select('id, materia_id, categoria_id, titulo, fecha')
+          .inFilter('materia_id', materiaIds);
       final actividades = List<Map<String, dynamic>>.from(actRes);
 
       List<Map<String, dynamic>> calificaciones = [];
       if (actividades.isNotEmpty) {
         final actIds = actividades.map((a) => a['id'] as String).toList();
-        var queryCalif = _client.from('aca_calificaciones').select('id, actividad_id, alumno_id, nota_numerica').inFilter('actividad_id', actIds);
+        var queryCalif = _client
+            .from('aca_calificaciones')
+            .select('id, actividad_id, alumno_id, nota_numerica')
+            .inFilter('actividad_id', actIds);
         if (alumnosIds != null && alumnosIds.isNotEmpty) {
           queryCalif = queryCalif.inFilter('alumno_id', alumnosIds);
         }
         final califRes = await queryCalif;
         calificaciones = List<Map<String, dynamic>>.from(califRes);
       }
-      
-      var queryRubricas = _client.from('aca_rubricas_cualitativas').select('*').inFilter('materia_id', materiaIds);
+
+      var queryRubricas = _client
+          .from('aca_rubricas_cualitativas')
+          .select('*')
+          .inFilter('materia_id', materiaIds);
       if (alumnosIds != null && alumnosIds.isNotEmpty) {
         queryRubricas = queryRubricas.inFilter('alumno_id', alumnosIds);
       }
-      final rubricasRes = await queryRubricas;
-      final rubricas = List<Map<String, dynamic>>.from(rubricasRes);
+      final rubricas = List<Map<String, dynamic>>.from(await queryRubricas);
 
-      var queryCierres = _client.from('aca_cierres_etapa').select('*').inFilter('materia_id', materiaIds);
+      var queryCierres = _client
+          .from('aca_cierres_etapa')
+          .select('*')
+          .inFilter('materia_id', materiaIds);
       if (alumnosIds != null && alumnosIds.isNotEmpty) {
         queryCierres = queryCierres.inFilter('alumno_id', alumnosIds);
       }
-      final cierresRes = await queryCierres;
-      final cierres = List<Map<String, dynamic>>.from(cierresRes);
+      final cierres = List<Map<String, dynamic>>.from(await queryCierres);
+
+      // Nombre del curso (ej. "1° ES")
+      String identificadorDivision = '';
+      if (cursoId != null) {
+        try {
+          final cur = await _client
+              .from('acad_cursos')
+              .select('identificador_division')
+              .eq('curso_id', cursoId)
+              .maybeSingle();
+          identificadorDivision = cur?['identificador_division']?.toString() ?? '';
+        } catch (_) {}
+      }
+
+      // DNI y datos demográficos de los alumnos
+      final Map<String, Map<String, dynamic>> alumnosDemoData = {};
+      if (alumnosIds != null && alumnosIds.isNotEmpty) {
+        try {
+          final demoRes = await _client
+              .from('acad_inscripciones')
+              .select('alumno_id, usr_legajo_alumno(datos_demograficos)')
+              .inFilter('alumno_id', alumnosIds);
+          for (final row in demoRes) {
+            final aId = row['alumno_id']?.toString() ?? '';
+            final legajo = row['usr_legajo_alumno'] as Map<String, dynamic>?;
+            final demo = legajo?['datos_demograficos'] as Map<String, dynamic>?;
+            if (aId.isNotEmpty && demo != null) {
+              alumnosDemoData[aId] = demo;
+            }
+          }
+        } catch (_) {}
+      }
 
       return {
         'materias': materias,
@@ -575,10 +633,16 @@ class SupabaseService {
         'categorias': categorias,
         'rubricas': rubricas,
         'cierres': cierres,
+        'identificadorDivision': identificadorDivision,
+        'alumnosDemoData': alumnosDemoData,
       };
     } catch (e) {
       print('Error al obtener datos del boletín completo: $e');
-      return {'materias': [], 'actividades': [], 'calificaciones': [], 'categorias': [], 'rubricas': [], 'cierres': []};
+      return {
+        'materias': [], 'actividades': [], 'calificaciones': [],
+        'categorias': [], 'rubricas': [], 'cierres': [],
+        'identificadorDivision': '', 'alumnosDemoData': <String, Map<String, dynamic>>{},
+      };
     }
   }
 
@@ -2178,13 +2242,87 @@ class SupabaseService {
   }
 
   Future<void> guardarRubricasCualitativas(List<Map<String, dynamic>> rubricas) async {
-    for (var rubrica in rubricas) {
-      await _client.from('aca_rubricas_cualitativas').upsert(rubrica, onConflict: 'alumno_id, materia_id, etapa');
-    }
+    if (rubricas.isEmpty) return;
+    await _client
+        .from('aca_rubricas_cualitativas')
+        .upsert(rubricas, onConflict: 'alumno_id, materia_id, etapa');
   }
 
   Future<void> guardarCierreEtapa(Map<String, dynamic> cierre) async {
     await _client.from('aca_cierres_etapa').upsert(cierre, onConflict: 'alumno_id, materia_id, etapa');
+  }
+
+  // ─── Rúbricas cualitativas por materia/etapa ──────────────────────────────
+
+  /// Lee las rúbricas cualitativas guardadas para una materia y etapa concretas.
+  Future<List<Map<String, dynamic>>> obtenerRubricasCualitativasPorMateria({
+    required String materiaId,
+    required String etapa,
+  }) async {
+    final response = await _client
+        .from('aca_rubricas_cualitativas')
+        .select('*')
+        .eq('materia_id', materiaId)
+        .eq('etapa', etapa);
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  // ─── Categorías por materia (grupos de calificación del docente) ──────────
+
+  /// Devuelve las categorías de una materia: primero las propias (materia_id = materiaId),
+  /// luego las globales (materia_id IS NULL), ordenadas por nombre.
+  Future<List<Map<String, dynamic>>> obtenerCategoriasMateria(String materiaId) async {
+    final response = await _client
+        .from('aca_categorias_nota')
+        .select('id, nombre, peso_porcentaje, materia_id')
+        .or('materia_id.eq.$materiaId,materia_id.is.null')
+        .order('nombre', ascending: true);
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  /// Crea una nueva categoría/grupo vinculada a una materia específica.
+  Future<Map<String, dynamic>> crearCategoriaMateria({
+    required String materiaId,
+    required String nombre,
+    required double pesoPorc,
+  }) async {
+    final res = await _client.from('aca_categorias_nota').insert({
+      'materia_id': materiaId,
+      'nombre': nombre,
+      'peso_porcentaje': pesoPorc,
+    }).select().single();
+    return Map<String, dynamic>.from(res);
+  }
+
+  /// Elimina una categoría/grupo (solo las propias de la materia, no las globales).
+  Future<void> eliminarCategoriaMateria(String categoriaId) async {
+    await _client.from('aca_categorias_nota').delete().eq('id', categoriaId);
+  }
+
+  // ─── Configuración de modo de calificación por materia ────────────────────
+
+  /// Obtiene el modo de calificación guardado para una materia.
+  /// Retorna 'GRUPOS' (por defecto) o 'PORCENTAJE'.
+  Future<String> obtenerModoCalificacion(String materiaId) async {
+    try {
+      final res = await _client
+          .from('aca_config_materia')
+          .select('modo_calificacion')
+          .eq('materia_id', materiaId)
+          .maybeSingle();
+      return res?['modo_calificacion']?.toString() ?? 'GRUPOS';
+    } catch (_) {
+      return 'GRUPOS';
+    }
+  }
+
+  /// Guarda (upsert) el modo de calificación para una materia.
+  Future<void> guardarModoCalificacion(String materiaId, String modo) async {
+    await _client.from('aca_config_materia').upsert({
+      'materia_id': materiaId,
+      'modo_calificacion': modo,
+      'updated_at': DateTime.now().toIso8601String(),
+    }, onConflict: 'materia_id');
   }
 }
 

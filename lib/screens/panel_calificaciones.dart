@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../models/alumno_asistencia.dart';
 import '../services/print_helper.dart';
+import '../utils/logo_base64.dart';
 
 class PanelCalificaciones extends StatefulWidget {
   final String? materiaId;
@@ -25,7 +26,23 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
   List<AlumnoAsistencia> _alumnos = [];
 
   String? _selectedMateriaId;
-  
+
+  /// Modo de cálculo del RITE:
+  /// 'GRUPOS'      → promedio por categoría ponderado por el peso de la categoría (default)
+  /// 'PORCENTAJE'  → cada actividad pesa su propio peso_porcentaje_actividad
+  String _modoCalificacion = 'GRUPOS';
+
+  // Definición fija de los 7 criterios del boletín cualitativo
+  static const List<Map<String, String>> _kCriterios = [
+    {'key': 'criterio_apropiacion',   'label': 'Apropiación\nde Contenidos'},
+    {'key': 'criterio_resolucion',    'label': 'Resolución\nde Problemas'},
+    {'key': 'criterio_participacion', 'label': 'Participación'},
+    {'key': 'criterio_planteos',      'label': 'Planteos\ny Dudas'},
+    {'key': 'criterio_entrega',       'label': 'Entrega en\nTiempo y Forma'},
+    {'key': 'criterio_prolijidad',    'label': 'Prolijidad\ny Orden'},
+    {'key': 'criterio_aic',           'label': 'AIC'},
+  ];
+
   // Memoria de calificaciones local: alumnoId -> actividadId -> nota
   final Map<String, Map<String, double?>> _grades = {};
   
@@ -62,8 +79,14 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
         _selectedMateriaId = _materias.first['materia_id'] as String;
       }
 
-      // 2. Cargar categorías fijas
-      _categorias = await _supabaseService.obtenerCategoriasCalificaciones();
+      // 2. Cargar categorías para la materia seleccionada (propias + globales)
+      //    y el modo de calificación configurado por el docente
+      if (_selectedMateriaId != null) {
+        _categorias = await _supabaseService.obtenerCategoriasMateria(_selectedMateriaId!);
+        _modoCalificacion = await _supabaseService.obtenerModoCalificacion(_selectedMateriaId!);
+      } else {
+        _categorias = await _supabaseService.obtenerCategoriasCalificaciones();
+      }
 
       // 3. Cargar alumnos vinculados específicamente al año/curso de la materia
       String? cursoId = widget.cursoId;
@@ -94,7 +117,11 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
   Future<void> _cargarPlanillaMateria() async {
     if (_selectedMateriaId == null) return;
-    
+
+    // Recargar categorías propias + globales y modo de calificación para la nueva materia
+    _categorias = await _supabaseService.obtenerCategoriasMateria(_selectedMateriaId!);
+    _modoCalificacion = await _supabaseService.obtenerModoCalificacion(_selectedMateriaId!);
+
     // Guardar focos actuales o limpiar controladores
     for (final controller in _controllers.values) {
       controller.dispose();
@@ -293,6 +320,8 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
     String tipoNota = 'NUMERICA'; // 'NUMERICA', 'TAREA', 'INFORMATIVA', 'CONDUCTA'
     DateTime selectedFecha = DateTime.now();
     bool agendarEnCalendario = true;
+    double? pesoActividad; // Solo se usa en modo PORCENTAJE
+    final pesoCtrlModal = TextEditingController();
 
     final matSeleccionada = _materias.firstWhere((m) => m['materia_id'] == _selectedMateriaId, orElse: () => <String, dynamic>{});
     final nombreMateria = matSeleccionada['nombre_asignatura']?.toString() ?? 'Materia';
@@ -474,7 +503,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                       DropdownButtonFormField<String>(
                         value: selectedCategoriaId,
                         decoration: const InputDecoration(
-                          labelText: 'Categoría de Nota',
+                          labelText: 'Grupo / Categoría de Nota',
                           border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
                         ),
                         items: _categorias.map((cat) {
@@ -485,10 +514,48 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                           );
                         }).toList(),
                         onChanged: (val) {
-                          setModalState(() {
-                            selectedCategoriaId = val;
-                          });
+                          setModalState(() => selectedCategoriaId = val);
                         },
+                      ),
+                    ],
+                    // Campo de peso % solo en modo "% por Actividad"
+                    if (_modoCalificacion == 'PORCENTAJE' && tipoNota == 'NUMERICA') ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.purple.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.purple.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Icon(Icons.percent, size: 16, color: Colors.purple.shade700),
+                              const SizedBox(width: 6),
+                              Text('¿Qué porcentaje de la nota final vale esta evaluación?',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.purple.shade800)),
+                            ]),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: pesoCtrlModal,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: InputDecoration(
+                                labelText: 'Peso %',
+                                hintText: 'Ej: 30',
+                                suffixText: '%',
+                                isDense: true,
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                filled: true,
+                                fillColor: Colors.white,
+                              ),
+                              onChanged: (val) {
+                                pesoActividad = double.tryParse(val.replaceAll(',', '.'));
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ],
@@ -526,13 +593,16 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
                           Navigator.of(builderContext).pop(); // Cerrar modal usando el context interno
                           setState(() => _isSaving = true);
-                          
+
                           try {
                             await _supabaseService.crearActividad(
                               materiaId: _selectedMateriaId!,
                               categoriaId: selectedCategoriaId!,
                               titulo: finalTitulo,
                               fecha: selectedFecha,
+                              pesoPorc: (_modoCalificacion == 'PORCENTAJE' && tipoNota == 'NUMERICA')
+                                  ? pesoActividad
+                                  : null,
                             );
 
                             if (agendarEnCalendario) {
@@ -589,6 +659,10 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
         );
       },
     );
+
+    // Liberar controllers del modal
+    tituloController.dispose();
+    pesoCtrlModal.dispose();
   }
 
   void _mostrarError(String mensaje) {
@@ -1027,143 +1101,223 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
     try {
       String? cursoId = widget.cursoId;
       if (_materias.isNotEmpty && _selectedMateriaId != null) {
-        final mat = _materias.firstWhere((m) => m['materia_id'] == _selectedMateriaId, orElse: () => <String, dynamic>{});
+        final mat = _materias.firstWhere(
+          (m) => m['materia_id'] == _selectedMateriaId,
+          orElse: () => <String, dynamic>{},
+        );
         if (mat.isNotEmpty && mat['curso_id'] != null) {
           cursoId = mat['curso_id'].toString();
         }
       }
 
+      final alumnosIds = alumnoEspecifico != null
+          ? [alumnoEspecifico.id]
+          : _alumnos.map((a) => a.id).toList();
+
       final datos = await _supabaseService.obtenerDatosBoletinCompleto(
         cursoId: cursoId,
-        alumnosIds: alumnoEspecifico != null ? [alumnoEspecifico.id] : _alumnos.map((a) => a.id).toList(),
+        alumnosIds: alumnosIds,
       );
 
-      final List<Map<String, dynamic>> materiasCurso = List<Map<String, dynamic>>.from(datos['materias'] ?? []);
-      final List<Map<String, dynamic>> actividades = List<Map<String, dynamic>>.from(datos['actividades'] ?? []);
-      final List<Map<String, dynamic>> calificaciones = List<Map<String, dynamic>>.from(datos['calificaciones'] ?? []);
-      final List<Map<String, dynamic>> categorias = List<Map<String, dynamic>>.from(datos['categorias'] ?? []);
+      final List<Map<String, dynamic>> materiasCurso =
+          List<Map<String, dynamic>>.from(datos['materias'] ?? []);
+      final List<Map<String, dynamic>> rubricas =
+          List<Map<String, dynamic>>.from(datos['rubricas'] ?? []);
+      final List<Map<String, dynamic>> cierres =
+          List<Map<String, dynamic>>.from(datos['cierres'] ?? []);
+      final String identificadorDivision =
+          datos['identificadorDivision']?.toString() ?? '';
+      final Map<String, dynamic> alumnosDemoData =
+          Map<String, dynamic>.from(datos['alumnosDemoData'] ?? {});
 
       if (materiasCurso.isEmpty) {
         _mostrarError('No se encontraron materias para este curso.');
         return;
       }
 
-      final alumnosAPrint = alumnoEspecifico != null ? [alumnoEspecifico] : _alumnos;
-
+      final alumnosAPrint =
+          alumnoEspecifico != null ? [alumnoEspecifico] : _alumnos;
       final List<String> boletinesHtml = [];
 
       for (final alumno in alumnosAPrint) {
+        final demo =
+            alumnosDemoData[alumno.id] as Map<String, dynamic>? ?? {};
+        final dni = demo['dni']?.toString() ?? '-';
+
         final List<String> filasMaterias = [];
+
         for (final mat in materiasCurso) {
           final matId = mat['materia_id'] as String;
-          final nombreMat = mat['nombre_asignatura']?.toString() ?? 'Materia';
+          final nombreMat =
+              (mat['nombre_asignatura'] ?? 'Materia').toString().toUpperCase();
 
-          final actsMat = actividades.where((a) => a['materia_id'] == matId).toList();
-          final catsMat = categorias.where((c) => c['materia_id'] == matId).toList();
-
-          // Informe de Seguimiento Docente
-          final infoActs = actsMat.where((a) => a['titulo'].toString().startsWith('[INFO]')).toList();
-          String textoSeguimiento = 'En proceso';
-          if (infoActs.isNotEmpty) {
-            final califInfo = calificaciones.firstWhere(
-              (c) => c['actividad_id'] == infoActs.first['id'] && c['alumno_id'] == alumno.id && c['nota_numerica'] != null,
-              orElse: () => <String, dynamic>{},
+          // Rúbrica cualitativa: preferir 1° ETAPA, luego cualquier otra
+          final rubricasMat = rubricas
+              .where((r) =>
+                  r['alumno_id'] == alumno.id && r['materia_id'] == matId)
+              .toList();
+          Map<String, dynamic>? rubrica;
+          if (rubricasMat.isNotEmpty) {
+            rubrica = rubricasMat.firstWhere(
+              (r) => r['etapa'] == '1° ETAPA',
+              orElse: () => rubricasMat.first,
             );
-            if (califInfo.isNotEmpty && califInfo['nota_numerica'] != null) {
-              final val = (califInfo['nota_numerica'] as num).toDouble();
-              textoSeguimiento = 'Promedio Seguimiento: ${val.toStringAsFixed(1)}';
-            } else {
-              textoSeguimiento = 'Sin observaciones registradas';
-            }
           }
 
-          // Nota de Conducta Diaria
-          final conductaActs = actsMat.where((a) => a['titulo'].toString().startsWith('[CONDUCTA]')).toList();
-          String textoConducta = '-';
-          if (conductaActs.isNotEmpty) {
-            final califConducta = calificaciones.firstWhere(
-              (c) => c['actividad_id'] == conductaActs.first['id'] && c['alumno_id'] == alumno.id && c['nota_numerica'] != null,
-              orElse: () => <String, dynamic>{},
-            );
-            if (califConducta.isNotEmpty && califConducta['nota_numerica'] != null) {
-              final val = (califConducta['nota_numerica'] as num).toDouble();
-              textoConducta = val.toStringAsFixed(1);
-            } else {
-              textoConducta = 'En proc.';
-            }
+          // Cierres de etapa para esta materia/alumno
+          final cierresMat = cierres
+              .where((c) =>
+                  c['alumno_id'] == alumno.id && c['materia_id'] == matId)
+              .toList();
+
+          Map<String, dynamic>? buscarCierre(String etapa) {
+            final matches =
+                cierresMat.where((c) => c['etapa'] == etapa).toList();
+            return matches.isNotEmpty ? matches.first : null;
           }
 
-          final double? promedioRite = _supabaseService.calcularPromedioRite(
-            actividades: actsMat,
-            calificaciones: calificaciones,
-            categorias: catsMat,
-            alumnoId: alumno.id,
-          );
+          final cierre1   = buscarCierre('1° ETAPA');
+          final cierre2   = buscarCierre('2° ETAPA');
+          final cierreDic = buscarCierre('INTENSIFICACION_DIC');
+          final cierreFeb = buscarCierre('INTENSIFICACION_FEB');
 
-          String condicionRite = 'En Proceso';
-          String badgeClass = 'badge-grey';
-          if (promedioRite != null) {
-            if (promedioRite >= 7.0) {
-              condicionRite = 'TEA (Aprobado)';
-              badgeClass = 'badge-green';
-            } else if (promedioRite >= 4.0) {
-              condicionRite = 'TEP (En Proceso)';
-              badgeClass = 'badge-orange';
-            } else {
-              condicionRite = 'TED (Discontinuo)';
-              badgeClass = 'badge-red';
-            }
+          // Criterios de rúbrica
+          String cr(String key) => rubrica?[key]?.toString() ?? '';
+          final ap  = cr('criterio_apropiacion');
+          final res = cr('criterio_resolucion');
+          final par = cr('criterio_participacion');
+          final pla = cr('criterio_planteos');
+          final ent = cr('criterio_entrega');
+          final pro = cr('criterio_prolijidad');
+          final aic = cr('criterio_aic');
+
+          // Resumen de trayectoria (TEA / TEP / TED)
+          final resumen1 = cierre1?['condicion_trayectoria']?.toString() ?? '';
+          final resumen2 = cierre2?['condicion_trayectoria']?.toString() ?? '';
+
+          // Intensificaciones
+          String formatNota(Map<String, dynamic>? c) =>
+              c?['calificacion_numerica'] != null
+                  ? (c!['calificacion_numerica'] as num).toStringAsFixed(1)
+                  : '';
+          final intDic = formatNota(cierreDic);
+          final intFeb = formatNota(cierreFeb);
+
+          // Calificación final = promedio de las 2 etapas
+          final nota1 = cierre1?['calificacion_numerica'] != null
+              ? (cierre1!['calificacion_numerica'] as num).toDouble()
+              : null;
+          final nota2 = cierre2?['calificacion_numerica'] != null
+              ? (cierre2!['calificacion_numerica'] as num).toDouble()
+              : null;
+          String calFinal = '';
+          if (nota1 != null && nota2 != null) {
+            calFinal = ((nota1 + nota2) / 2).toStringAsFixed(1);
+          } else if (nota1 != null) {
+            calFinal = nota1.toStringAsFixed(1);
+          } else if (nota2 != null) {
+            calFinal = nota2.toStringAsFixed(1);
           }
 
           filasMaterias.add('''
             <tr>
-              <td style="font-weight:bold; text-align:left; padding: 12px 8px; border: 1px solid #eee; font-size: 11px; color: #444;">$nombreMat</td>
-              <td style="text-align:center; padding: 12px 8px; border: 1px solid #eee; font-size: 11px; font-weight: bold; color: #777;">
-                <div style="background-color: #e2e3e5; display: inline-block; padding: 2px 10px; border-radius: 4px;">${promedioRite != null ? promedioRite.toStringAsFixed(1) : "-"}</div>
-              </td>
-              <td style="font-weight:bold; text-align:center; padding: 12px 8px; border: 1px solid #eee; font-size: 11px; color: #444;">En Proceso</td>
-              <td style="font-weight:bold; color:#b76e00; text-align:center; padding: 12px 8px; border: 1px solid #eee; font-size: 11px;">-</td>
-              <td style="text-align:left; font-style:italic; color:#666; padding: 12px 8px; border: 1px solid #eee; font-size: 11px;">En proceso</td>
+              <td class="td-mat">$nombreMat</td>
+              <td class="td-c">$ap</td>
+              <td class="td-c">$res</td>
+              <td class="td-c">$par</td>
+              <td class="td-c">$pla</td>
+              <td class="td-c">$ent</td>
+              <td class="td-c">$pro</td>
+              <td class="td-c">$aic</td>
+              <td class="td-c"></td>
+              <td class="td-c td-tray">$resumen1</td>
+              <td class="td-c td-tray">$resumen2</td>
+              <td class="td-c">$intDic</td>
+              <td class="td-c">$intFeb</td>
+              <td class="td-c td-final">$calFinal</td>
             </tr>
           ''');
         }
 
+        final anio = DateTime.now().year;
         final tablaMateriaHtml = filasMaterias.join('');
 
         boletinesHtml.add('''
-          <div style="padding: 25px; margin-bottom: 40px; page-break-after: always; background: #fff;">
-            <div style="text-align: center; border-bottom: 2px solid #5E3A8C; padding-bottom: 5px; margin-bottom: 5px;">
-              <h1 style="margin: 0; font-size: 20px; text-transform: uppercase; letter-spacing: 1px; color: #5E3A8C;">Instituto Alejandro Baradero</h1>
+          <div class="boletin-page">
+
+            <!-- ===== ENCABEZADO ===== -->
+            <div class="header-wrap">
+              <div class="header-left">
+                <img src="$kLogoBase64" alt="Logo Instituto" style="height:48px; width:auto; object-fit:contain;">
+                <div class="inst-sep"></div>
+                <div class="inst-loc">B&nbsp;A&nbsp;R&nbsp;A&nbsp;D&nbsp;E&nbsp;R&nbsp;O</div>
+              </div>
+              <div class="header-right">NIVEL SECUNDARIO</div>
             </div>
-            <div style="text-align: center; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px;">
-                <h2 style="margin: 0; font-size: 14px; color: #333; font-weight: bold;">Boletín Oficial de Calificaciones, Conducta y Seguimiento</h2>
+            <hr class="hr-thin">
+
+            <!-- ===== DATOS DEL ALUMNO ===== -->
+            <div class="alumno-row">
+              <div>
+                <span class="lbl">ALUMNO/A:</span> <strong>${alumno.nombre.toUpperCase()}</strong>
+                &emsp;
+                <span class="lbl">DNI:</span> <strong>$dni</strong>
+                &emsp;
+                <span class="lbl">AÑO:</span> <strong>$identificadorDivision</strong>
+              </div>
+              <div class="tray-titulo">INFORME DE TRAYECTORIA $anio</div>
             </div>
 
-            <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 12px; font-weight: bold;">
-              <div>Alumno/a: <span style="font-weight: normal;">${alumno.nombre.toUpperCase()}</span></div>
-              <div>Fecha de Emisión: <span style="font-weight: normal;">${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}</span></div>
-            </div>
-
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 11px;">
+            <!-- ===== TABLA PRINCIPAL ===== -->
+            <table class="tbl">
               <thead>
-                <tr style="background-color: #f9f9f9;">
-                  <th style="padding: 12px 8px; border: 1px solid #e0e0e0; text-align: left; width: 30%; color: #666; font-weight: bold;">Asignatura / Materia</th>
-                  <th style="padding: 12px 8px; border: 1px solid #e0e0e0; text-align: center; width: 15%; color: #666; font-weight: bold;">Nota RITE Final</th>
-                  <th style="padding: 12px 8px; border: 1px solid #e0e0e0; text-align: center; width: 20%; color: #666; font-weight: bold;">Condición RITE</th>
-                  <th style="padding: 12px 8px; border: 1px solid #e0e0e0; text-align: center; width: 15%; color: #666; font-weight: bold;">Conducta Diaria</th>
-                  <th style="padding: 12px 8px; border: 1px solid #e0e0e0; text-align: left; width: 20%; color: #666; font-weight: bold;">Informe / Seguimiento</th>
+                <tr>
+                  <th rowspan="2" class="th-mat">MATERIA</th>
+                  <th colspan="13" class="th-group">CRITERIOS Y CALIFICACIÓN</th>
+                </tr>
+                <tr>
+                  <th class="th-r"><span class="rot">Apropiación de los contenidos trabajados</span></th>
+                  <th class="th-r"><span class="rot">Resolución de las actividades propuestas en tiempo</span></th>
+                  <th class="th-r"><span class="rot">Participación en clases</span></th>
+                  <th class="th-r"><span class="rot">Planteos de dudas, opiniones y sugerencias</span></th>
+                  <th class="th-r"><span class="rot">Entrega de las actividades</span></th>
+                  <th class="th-r"><span class="rot">Prolijidad, responsabilidad y carpeta completa.</span></th>
+                  <th class="th-r"><span class="rot">Cumplimiento de los AIC*</span></th>
+                  <th class="th-r"><span class="rot">TOTAL INASISTENCIAS</span></th>
+                  <th class="th-r"><span class="rot">RESUMEN DE TRAYECTORIA 1° ETAPA</span></th>
+                  <th class="th-r"><span class="rot">RESUMEN DE TRAYECTORIA 2° ETAPA</span></th>
+                  <th class="th-r"><span class="rot">INTENSIFICACIÓN DICIEMBRE</span></th>
+                  <th class="th-r"><span class="rot">INTENSIFICACIÓN FEBRERO</span></th>
+                  <th class="th-r"><span class="rot">CALIFICACIÓN FINAL</span></th>
                 </tr>
               </thead>
               <tbody>
                 $tablaMateriaHtml
+                <tr>
+                  <td class="td-foot" colspan="9">TOTAL DE INASISTENCIAS DIARIAS</td>
+                  <td class="td-c" colspan="5"></td>
+                </tr>
+                <tr>
+                  <td class="td-foot" colspan="14" style="height:28px;">INFORME DE PRECEPTORÍA</td>
+                </tr>
               </tbody>
             </table>
 
-            <div style="margin-top: 80px; display: flex; justify-content: space-between; text-align: center; font-size: 12px;">
-              <div style="width: 30%; border-top: 1px solid #777; padding-top: 5px; font-weight: bold; color: #444;">Firma Dirección</div>
-              <div style="width: 30%; border-top: 1px solid #777; padding-top: 5px; font-weight: bold; color: #444;">Firma Docente / Preceptor</div>
-              <div style="width: 30%; border-top: 1px solid #777; padding-top: 5px; font-weight: bold; color: #444;">Firma Madre / Padre / Tutor</div>
+            <!-- ===== FIRMAS ===== -->
+            <div class="firmas">
+              <div class="firma"><div class="firma-linea"></div>Firma Dirección</div>
+              <div class="firma"><div class="firma-linea"></div>Firma Docente / Preceptor</div>
+              <div class="firma"><div class="firma-linea"></div>Firma Madre / Padre / Tutor</div>
             </div>
+
+            <!-- ===== LEYENDA ===== -->
+            <div class="leyenda">
+              <strong>Apreciaciones:</strong>&nbsp; S: Sobresaliente &ndash; MB: Muy bueno &ndash; B: Bueno &ndash; R: Regular<br>
+              <strong>TEA:</strong> Trayectoria Educativa Avanzada &nbsp;&ndash;&nbsp;
+              <strong>TEP:</strong> Trayectoria Educativa en Proceso &nbsp;&ndash;&nbsp;
+              <strong>TED:</strong> Trayectoria Educativa Discontinua
+            </div>
+
           </div>
         ''');
       }
@@ -1171,14 +1325,113 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
       final contenidoTotal = boletinesHtml.join('');
 
       PrintHelper.imprimirHTML(
-        titulo: alumnoEspecifico != null ? 'Boletín - ${alumnoEspecifico.nombre}' : 'Boletines de Curso - IA Baradero',
+        titulo: alumnoEspecifico != null
+            ? 'Boletín - ${alumnoEspecifico.nombre}'
+            : 'Boletines - IA Baradero',
         htmlContentBody: '''
           <style>
-            .badge-green { background-color: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
-            .badge-orange { background-color: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
-            .badge-red { background-color: #f8d7da; color: #721c24; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
-            .badge-grey { background-color: #e2e3e5; color: #383d41; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
-            table td { padding: 10px; border: 1px solid #ddd; text-align: center; font-size: 14px; }
+            @page { size: A4 landscape; margin: 8mm; }
+            * { box-sizing: border-box; }
+            body { font-family: Arial, Helvetica, sans-serif; font-size: 8px; color: #111; }
+
+            .boletin-page {
+              padding: 6mm;
+              page-break-after: always;
+              background: #fff;
+            }
+
+            /* --- ENCABEZADO --- */
+            .header-wrap {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 3px;
+            }
+            .header-left { display: flex; align-items: center; gap: 10px; }
+            .inst-sep { width: 1px; height: 32px; background: #bbb; }
+            .inst-loc { font-size: 7.5px; letter-spacing: 2px; color: #00ACC1; font-weight: bold; }
+            .header-right { font-size: 9px; font-weight: bold; letter-spacing: 1px; }
+            .hr-thin { border: none; border-top: 1px solid #888; margin: 3px 0 5px; }
+
+            /* --- ALUMNO --- */
+            .alumno-row {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+              font-size: 8.5px;
+              margin-bottom: 6px;
+            }
+            .lbl { font-weight: bold; }
+            .tray-titulo { font-size: 8.5px; font-weight: bold; color: #1565C0; }
+
+            /* --- TABLA --- */
+            .tbl { width: 100%; border-collapse: collapse; }
+            .tbl th, .tbl td { border: 1px solid #000; }
+
+            .th-mat {
+              background: #D9E1F2; font-weight: bold;
+              text-align: center; vertical-align: middle;
+              font-size: 8px; padding: 4px 6px;
+              width: 19%;
+            }
+            .th-group {
+              background: #D9E1F2; font-weight: bold;
+              text-align: center; font-size: 8px; padding: 3px 4px;
+            }
+            .th-r {
+              width: 5.5%; padding: 2px 1px;
+              vertical-align: bottom; text-align: center;
+              background: #fff;
+              height: 115px;
+            }
+            .rot {
+              display: inline-block;
+              writing-mode: vertical-rl;
+              transform: rotate(180deg);
+              font-size: 7.5px;
+              font-weight: bold;
+              white-space: nowrap;
+              text-align: left;
+            }
+
+            .td-mat {
+              text-align: left; font-weight: bold;
+              font-size: 8px; padding: 5px 6px;
+            }
+            .td-c {
+              text-align: center; font-size: 8px;
+              padding: 3px 2px;
+            }
+            .td-tray { font-weight: bold; font-size: 7.5px; }
+            .td-final { font-weight: bold; font-size: 9px; }
+            .td-foot {
+              background: #f2f2f2; font-weight: bold;
+              font-size: 7.5px; padding: 3px 6px;
+              text-align: left;
+            }
+
+            /* --- FIRMAS --- */
+            .firmas {
+              display: flex;
+              justify-content: space-around;
+              margin-top: 18px;
+              text-align: center;
+              font-size: 8px;
+            }
+            .firma { width: 28%; }
+            .firma-linea {
+              border-top: 1px solid #444;
+              margin: 30px 0 3px;
+            }
+
+            /* --- LEYENDA --- */
+            .leyenda {
+              margin-top: 8px;
+              border-top: 1px solid #ccc;
+              padding-top: 4px;
+              font-size: 7.5px;
+              line-height: 1.7;
+            }
           </style>
           $contenidoTotal
         ''',
@@ -1296,6 +1549,12 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(
+                  icon: const Icon(Icons.category_outlined, size: 18),
+                  label: const Text('Gestionar Grupos', style: TextStyle(fontWeight: FontWeight.w600)),
+                  onPressed: _mostrarGestionCategorias,
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
                   icon: const Icon(Icons.analytics_outlined, size: 18),
                   label: const Text('Generar Seguimiento', style: TextStyle(fontWeight: FontWeight.w600)),
                   onPressed: _generarNotaSeguimientoInforme,
@@ -1305,6 +1564,16 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                   icon: const Icon(Icons.print_outlined, size: 18),
                   label: const Text('Planilla Materia', style: TextStyle(fontWeight: FontWeight.w600)),
                   onPressed: _imprimirPlanillaCalificaciones,
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.grade_outlined, size: 18),
+                  label: const Text('Boletín Cualitativo', style: TextStyle(fontWeight: FontWeight.w600)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple.shade700,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => _mostrarBoletinCualitativoGrid(),
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
@@ -1443,8 +1712,59 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  
+                  const SizedBox(height: 12),
+
+                  // ── Selector de modo de calificación ──────────────────────
+                  if (_selectedMateriaId != null)
+                    Row(
+                      children: [
+                        const Icon(Icons.calculate_outlined, size: 16, color: Colors.blueGrey),
+                        const SizedBox(width: 8),
+                        const Text('Modo de calificación:',
+                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                        const SizedBox(width: 12),
+                        SegmentedButton<String>(
+                          style: ButtonStyle(
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          segments: const [
+                            ButtonSegment(
+                              value: 'GRUPOS',
+                              label: Text('% por Grupo', style: TextStyle(fontSize: 12)),
+                              icon: Icon(Icons.category_outlined, size: 15),
+                            ),
+                            ButtonSegment(
+                              value: 'PORCENTAJE',
+                              label: Text('% por Actividad', style: TextStyle(fontSize: 12)),
+                              icon: Icon(Icons.percent, size: 15),
+                            ),
+                          ],
+                          selected: {_modoCalificacion},
+                          onSelectionChanged: (sel) async {
+                            final nuevo = sel.first;
+                            setState(() => _modoCalificacion = nuevo);
+                            if (_selectedMateriaId != null) {
+                              try {
+                                await _supabaseService.guardarModoCalificacion(
+                                    _selectedMateriaId!, nuevo);
+                              } catch (_) {}
+                            }
+                          },
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          _modoCalificacion == 'GRUPOS'
+                              ? 'Promedio por grupo → ponderado por peso de categoría'
+                              : 'Cada nota tiene su propio peso % al crearla',
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600,
+                              fontStyle: FontStyle.italic),
+                        ),
+                      ],
+                    ),
+
+                  const SizedBox(height: 12),
+
                   // Leyenda de Categorías de Evaluación
                   Wrap(
                     alignment: WrapAlignment.center,
@@ -1877,17 +2197,46 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
     final studentGrades = _grades[alumnoId] ?? {};
     if (studentGrades.isEmpty) return null;
 
+    if (_modoCalificacion == 'PORCENTAJE') {
+      // Modo A: cada actividad tiene su propio peso_porcentaje_actividad
+      double totalPonderado = 0.0;
+      double totalPeso = 0.0;
+      double sumaSimple = 0.0;
+      int countSimple = 0;
+
+      for (final entry in studentGrades.entries) {
+        final actId = entry.key;
+        final nota = entry.value;
+        if (nota == null) continue;
+        final act = _actividades.firstWhere((a) => a['id'] == actId, orElse: () => <String, dynamic>{});
+        if (act.isEmpty) continue;
+        final rawTitulo = act['titulo']?.toString() ?? '';
+        if (rawTitulo.startsWith('[INFO]') || rawTitulo.startsWith('[CONDUCTA]')) continue;
+        final pesoAct = (act['peso_porcentaje_actividad'] as num?)?.toDouble();
+        if (pesoAct != null && pesoAct > 0) {
+          totalPonderado += nota * pesoAct;
+          totalPeso += pesoAct;
+        } else {
+          sumaSimple += nota;
+          countSimple++;
+        }
+      }
+
+      if (totalPeso > 0) return totalPonderado / totalPeso;
+      if (countSimple > 0) return sumaSimple / countSimple;
+      return null;
+    }
+
+    // Modo B (default): promedio por categoría ponderado por el peso de la categoría
     final Map<String, List<double>> notasPorCategoria = {};
     for (final entry in studentGrades.entries) {
       final actId = entry.key;
       final nota = entry.value;
       if (nota == null) continue;
-
-      final act = _actividades.firstWhere((a) => a['id'] == actId, orElse: () => {});
+      final act = _actividades.firstWhere((a) => a['id'] == actId, orElse: () => <String, dynamic>{});
       if (act.isNotEmpty) {
         final rawTitulo = act['titulo']?.toString() ?? '';
         if (rawTitulo.startsWith('[INFO]') || rawTitulo.startsWith('[CONDUCTA]')) continue;
-
         final catId = act['categoria_id'];
         notasPorCategoria.putIfAbsent(catId, () => []).add(nota);
       }
@@ -1897,7 +2246,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
     double totalPonderado = 0.0;
     double totalPeso = 0.0;
-    
+
     for (final cat in _categorias) {
       final catId = cat['id'];
       final peso = (cat['peso_porcentaje'] as num).toDouble();
@@ -1908,8 +2257,643 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
         totalPeso += peso;
       }
     }
-    
+
     if (totalPeso == 0.0) return null;
     return totalPonderado / totalPeso;
+  }
+
+  // ─── Helpers para boletín cualitativo ───────────────────────────────────
+
+  /// Sugiere una apreciación cualitativa a partir del promedio RITE numérico.
+  String? _sugerirApreciacion(double? promedio) {
+    if (promedio == null) return null;
+    if (promedio >= 9.0) return 'S';
+    if (promedio >= 7.0) return 'MB';
+    if (promedio >= 6.0) return 'B';
+    return 'R';
+  }
+
+  /// Mezcla rubricas del servidor en el mapa de valores del grid.
+  void _mergeRubricas(
+    Map<String, Map<String, String?>> vals,
+    List<Map<String, dynamic>> rubricas,
+  ) {
+    for (final alumno in _alumnos) {
+      final r = rubricas.firstWhere(
+        (r) => r['alumno_id'] == alumno.id,
+        orElse: () => <String, dynamic>{},
+      );
+      if (r.isNotEmpty) {
+        vals[alumno.id] ??= {};
+        for (final c in _kCriterios) {
+          vals[alumno.id]![c['key']!] = r[c['key']]?.toString();
+        }
+      }
+    }
+  }
+
+  // ─── Widget: celda con botones S/MB/B/R ─────────────────────────────────
+
+  Widget _buildCriterioCell({
+    required String? value,
+    required ValueChanged<String?> onChanged,
+  }) {
+    const opciones = ['S', 'MB', 'B', 'R'];
+
+    Color bgFor(String v) => switch (v) {
+      'S'  => const Color(0xFFD1FAE5),
+      'MB' => const Color(0xFFDBEAFE),
+      'B'  => const Color(0xFFFEF3C7),
+      _    => const Color(0xFFFEE2E2),
+    };
+    Color fgFor(String v) => switch (v) {
+      'S'  => const Color(0xFF065F46),
+      'MB' => const Color(0xFF1E3A8A),
+      'B'  => const Color(0xFF92400E),
+      _    => const Color(0xFF991B1B),
+    };
+    Color bdrFor(String v) => switch (v) {
+      'S'  => const Color(0xFF34D399),
+      'MB' => const Color(0xFF60A5FA),
+      'B'  => const Color(0xFFFBBF24),
+      _    => const Color(0xFFF87171),
+    };
+
+    return SizedBox(
+      width: 142,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: opciones.map((v) {
+          final sel = value == v;
+          return Padding(
+            padding: const EdgeInsets.only(right: 3),
+            child: InkWell(
+              onTap: () => onChanged(sel ? null : v),
+              borderRadius: BorderRadius.circular(6),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+                decoration: BoxDecoration(
+                  color: sel ? bgFor(v) : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: sel ? bdrFor(v) : Colors.grey.shade300,
+                    width: sel ? 1.5 : 1.0,
+                  ),
+                ),
+                child: Text(
+                  v,
+                  style: TextStyle(
+                    color: sel ? fgFor(v) : Colors.grey.shade500,
+                    fontWeight: sel ? FontWeight.bold : FontWeight.w500,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ─── Chip de leyenda ─────────────────────────────────────────────────────
+
+  Widget _legendChip(String label, String tooltip, Color bg, Color fg) {
+    return Tooltip(
+      message: tooltip,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: fg.withOpacity(0.4)),
+        ),
+        child: Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.bold, fontSize: 11)),
+      ),
+    );
+  }
+
+  // ─── Modal: Boletín Cualitativo del Curso (grid completo) ────────────────
+
+  Future<void> _mostrarBoletinCualitativoGrid() async {
+    if (_selectedMateriaId == null) {
+      _mostrarError('Seleccione una materia primero.');
+      return;
+    }
+    if (_alumnos.isEmpty) {
+      _mostrarError('No hay alumnos vinculados a esta materia.');
+      return;
+    }
+
+    const etapas = ['1° ETAPA', '2° ETAPA'];
+    String etapa = '1° ETAPA';
+
+    // Mapa de valores: alumnoId → criterioKey → 'S'/'MB'/'B'/'R'/null
+    final Map<String, Map<String, String?>> vals = {};
+
+    // Pre-llenar con sugerencias del RITE actual
+    for (final a in _alumnos) {
+      final sug = _sugerirApreciacion(_calculateLocalRite(a.id));
+      vals[a.id] = { for (final c in _kCriterios) c['key']!: sug };
+    }
+
+    // Cargar rubricas ya guardadas para la etapa inicial
+    try {
+      final existing = await _supabaseService.obtenerRubricasCualitativasPorMateria(
+        materiaId: _selectedMateriaId!,
+        etapa: etapa,
+      );
+      _mergeRubricas(vals, existing);
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    final nombreMateria = _materias.firstWhere(
+      (m) => m['materia_id'] == _selectedMateriaId,
+      orElse: () => <String, dynamic>{'nombre_asignatura': 'Materia'},
+    )['nombre_asignatura']?.toString() ?? 'Materia';
+
+    bool isLoadingEtapa = false;
+    bool isSaving = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dlgCtx) {
+        return StatefulBuilder(builder: (ctx, setS) {
+          // Recarga rubricas cuando el docente cambia de etapa
+          Future<void> cambiarEtapa(String nueva) async {
+            setS(() { etapa = nueva; isLoadingEtapa = true; });
+            // Resetear a sugerencias RITE
+            for (final a in _alumnos) {
+              final sug = _sugerirApreciacion(_calculateLocalRite(a.id));
+              vals[a.id] = { for (final c in _kCriterios) c['key']!: sug };
+            }
+            try {
+              final existing = await _supabaseService.obtenerRubricasCualitativasPorMateria(
+                materiaId: _selectedMateriaId!,
+                etapa: nueva,
+              );
+              _mergeRubricas(vals, existing);
+            } catch (_) {}
+            if (ctx.mounted) setS(() => isLoadingEtapa = false);
+          }
+
+          return Dialog.fullscreen(
+            child: Scaffold(
+              backgroundColor: Colors.grey.shade50,
+              appBar: AppBar(
+                backgroundColor: const Color(0xFF1E293B),
+                foregroundColor: Colors.white,
+                leading: IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(dlgCtx).pop(),
+                ),
+                title: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Boletín Cualitativo del Curso',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
+                    Text(nombreMateria,
+                        style: const TextStyle(fontSize: 11, color: Colors.white60)),
+                  ],
+                ),
+                actions: [
+                  // Selector de etapa
+                  DropdownButton<String>(
+                    value: etapa,
+                    dropdownColor: const Color(0xFF334155),
+                    iconEnabledColor: Colors.white,
+                    underline: const SizedBox(),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+                    items: etapas.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                    onChanged: (isLoadingEtapa || isSaving) ? null : (v) {
+                      if (v != null && v != etapa) cambiarEtapa(v);
+                    },
+                  ),
+                  const SizedBox(width: 16),
+                  // Botón guardar
+                  FilledButton.icon(
+                    icon: isSaving
+                        ? const SizedBox(width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.save_rounded, size: 18),
+                    label: const Text('Guardar Todo',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: (isSaving || isLoadingEtapa) ? null : () async {
+                      setS(() => isSaving = true);
+                      try {
+                        final payload = _alumnos.map((a) {
+                          final v = vals[a.id] ?? {};
+                          return <String, dynamic>{
+                            'alumno_id': a.id,
+                            'materia_id': _selectedMateriaId!,
+                            'etapa': etapa,
+                            for (final c in _kCriterios) c['key']!: v[c['key']],
+                          };
+                        }).toList();
+                        await _supabaseService.guardarRubricasCualitativas(payload);
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                            content: Text('¡Boletín guardado para ${_alumnos.length} alumnos — Etapa: $etapa!'),
+                            backgroundColor: Colors.green.shade800,
+                            behavior: SnackBarBehavior.floating,
+                          ));
+                        }
+                      } catch (e) {
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                            content: Text('Error al guardar: $e'),
+                            backgroundColor: Colors.red.shade800,
+                          ));
+                        }
+                      } finally {
+                        if (ctx.mounted) setS(() => isSaving = false);
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 16),
+                ],
+              ),
+              body: Column(
+                children: [
+                  // ── Barra de leyenda ──
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    color: const Color(0xFFF1F5F9),
+                    child: Row(
+                      children: [
+                        const Text('Leyenda: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        _legendChip('S',  'Satisfactorio', const Color(0xFFD1FAE5), const Color(0xFF065F46)),
+                        const SizedBox(width: 6),
+                        _legendChip('MB', 'Muy Bueno',     const Color(0xFFDBEAFE), const Color(0xFF1E3A8A)),
+                        const SizedBox(width: 6),
+                        _legendChip('B',  'Bueno',         const Color(0xFFFEF3C7), const Color(0xFF92400E)),
+                        const SizedBox(width: 6),
+                        _legendChip('R',  'Regular',       const Color(0xFFFEE2E2), const Color(0xFF991B1B)),
+                        const SizedBox(width: 16),
+                        Icon(Icons.auto_awesome, size: 14, color: Colors.purple.shade400),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Valores pre-sugeridos por el RITE actual del alumno (editables)',
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.blueGrey.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blueGrey.shade200),
+                          ),
+                          child: Text(
+                            '$etapa  •  ${_alumnos.length} alumnos',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // ── Tabla ──
+                  Expanded(
+                    child: isLoadingEtapa
+                        ? const Center(child: CircularProgressIndicator())
+                        : SingleChildScrollView(
+                            padding: const EdgeInsets.all(12),
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: DataTable(
+                                headingRowColor: WidgetStateProperty.all(const Color(0xFF1E293B)),
+                                headingTextStyle: const TextStyle(
+                                    color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                dataRowMinHeight: 54,
+                                dataRowMaxHeight: 54,
+                                columnSpacing: 6,
+                                dividerThickness: 0.5,
+                                columns: [
+                                  const DataColumn(label: SizedBox(width: 175, child: Text('ALUMNO/A'))),
+                                  const DataColumn(
+                                    label: SizedBox(
+                                      width: 55,
+                                      child: Text('RITE\nActual', textAlign: TextAlign.center),
+                                    ),
+                                  ),
+                                  for (final c in _kCriterios)
+                                    DataColumn(
+                                      label: SizedBox(
+                                        width: 142,
+                                        child: Text(c['label']!,
+                                            style: const TextStyle(fontSize: 10),
+                                            textAlign: TextAlign.center),
+                                      ),
+                                    ),
+                                ],
+                                rows: List.generate(_alumnos.length, (idx) {
+                                  final alumno = _alumnos[idx];
+                                  final localRite = _calculateLocalRite(alumno.id);
+                                  final isAprobado = localRite != null && localRite >= 7.0;
+                                  final v = vals[alumno.id] ?? {};
+
+                                  return DataRow(
+                                    color: WidgetStateProperty.all(
+                                        idx.isEven ? Colors.white : const Color(0xFFF8FAFC)),
+                                    cells: [
+                                      // Nombre
+                                      DataCell(SizedBox(
+                                        width: 175,
+                                        child: Text(alumno.nombre,
+                                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                                            overflow: TextOverflow.ellipsis),
+                                      )),
+                                      // RITE actual
+                                      DataCell(Center(
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: localRite != null
+                                                ? (isAprobado ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2))
+                                                : const Color(0xFFF1F5F9),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            localRite?.toStringAsFixed(1) ?? '—',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                              color: localRite != null
+                                                  ? (isAprobado ? const Color(0xFF166534) : const Color(0xFF991B1B))
+                                                  : Colors.grey,
+                                            ),
+                                          ),
+                                        ),
+                                      )),
+                                      // 7 criterios
+                                      for (final c in _kCriterios)
+                                        DataCell(_buildCriterioCell(
+                                          value: v[c['key']],
+                                          onChanged: (newVal) {
+                                            setS(() {
+                                              vals[alumno.id] ??= {};
+                                              vals[alumno.id]![c['key']!] = newVal;
+                                            });
+                                          },
+                                        )),
+                                    ],
+                                  );
+                                }),
+                              ),
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  // ─── Modal: Gestión de grupos de calificación ─────────────────────────────
+
+  Future<void> _mostrarGestionCategorias() async {
+    if (_selectedMateriaId == null) {
+      _mostrarError('Seleccione una materia primero.');
+      return;
+    }
+
+    // Estado mutable fuera del builder para sobrevivir a setS
+    final categoriasLocales = List<Map<String, dynamic>>.from(_categorias);
+    final nombreCtrl = TextEditingController();
+    final pesoCtrl = TextEditingController();
+    bool isSaving = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dlgCtx) {
+        return StatefulBuilder(builder: (ctx, setS) {
+          final double totalPeso = categoriasLocales.fold(
+            0.0, (s, c) => s + (c['peso_porcentaje'] as num).toDouble());
+          final bool totalOk = (totalPeso - 100.0).abs() < 0.01;
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+            contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+            title: Row(children: [
+              const Icon(Icons.category_outlined, color: Colors.blueGrey),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text('Grupos de Calificación',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+              // Modo actual como chip informativo
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: _modoCalificacion == 'GRUPOS' ? Colors.green.shade50 : Colors.purple.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _modoCalificacion == 'GRUPOS' ? Colors.green.shade300 : Colors.purple.shade300,
+                  ),
+                ),
+                child: Text(
+                  _modoCalificacion == 'GRUPOS' ? 'Modo: Grupos' : 'Modo: % por Actividad',
+                  style: TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.bold,
+                    color: _modoCalificacion == 'GRUPOS' ? Colors.green.shade800 : Colors.purple.shade800,
+                  ),
+                ),
+              ),
+            ]),
+            content: SizedBox(
+              width: 500,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 8),
+                    // Barra de total
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: (totalPeso / 100).clamp(0.0, 1.2),
+                        minHeight: 7,
+                        backgroundColor: Colors.grey.shade200,
+                        color: totalOk ? Colors.green : (totalPeso > 100 ? Colors.red : Colors.orange),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Total: ${totalPeso.toStringAsFixed(0)}%  ${totalOk ? "✓ Correcto" : "— debe sumar 100%"}',
+                      style: TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w600,
+                        color: totalOk ? Colors.green.shade800 : Colors.orange.shade800,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Lista de categorías
+                    ...categoriasLocales.map((cat) {
+                      final esPropia = cat['materia_id'] != null;
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        child: ListTile(
+                          dense: true,
+                          leading: CircleAvatar(
+                            radius: 18,
+                            backgroundColor:
+                                esPropia ? Colors.green.shade50 : Colors.blue.shade50,
+                            child: Text(
+                              '${(cat['peso_porcentaje'] as num).toInt()}%',
+                              style: TextStyle(
+                                fontSize: 10, fontWeight: FontWeight.bold,
+                                color: esPropia ? Colors.green.shade800 : Colors.blue.shade800,
+                              ),
+                            ),
+                          ),
+                          title: Text(cat['nombre'].toString(),
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                          subtitle: Text(esPropia ? 'Grupo propio' : 'Grupo global compartido',
+                              style: const TextStyle(fontSize: 10)),
+                          trailing: esPropia
+                              ? IconButton(
+                                  icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 20),
+                                  tooltip: 'Eliminar grupo',
+                                  onPressed: () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: ctx,
+                                      builder: (c) => AlertDialog(
+                                        title: const Text('Eliminar grupo'),
+                                        content: Text(
+                                          '¿Eliminar "${cat['nombre']}"?\n'
+                                          'Las actividades en este grupo quedarán sin categoría.',
+                                        ),
+                                        actions: [
+                                          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancelar')),
+                                          TextButton(
+                                            style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                            onPressed: () => Navigator.pop(c, true),
+                                            child: const Text('Eliminar'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm == true) {
+                                      try {
+                                        await _supabaseService.eliminarCategoriaMateria(cat['id'] as String);
+                                        setState(() => _categorias.removeWhere((c) => c['id'] == cat['id']));
+                                        setS(() => categoriasLocales.removeWhere((c) => c['id'] == cat['id']));
+                                      } catch (e) {
+                                        if (ctx.mounted) _mostrarError('Error: $e');
+                                      }
+                                    }
+                                  },
+                                )
+                              : null,
+                        ),
+                      );
+                    }),
+                    const Divider(height: 20),
+                    // Formulario para agregar nuevo grupo
+                    const Text('Agregar nuevo grupo:',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: nombreCtrl,
+                            decoration: InputDecoration(
+                              labelText: 'Nombre',
+                              hintText: 'Ej: Evaluaciones Escritas',
+                              isDense: true,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 80,
+                          child: TextField(
+                            controller: pesoCtrl,
+                            decoration: InputDecoration(
+                              labelText: 'Peso %',
+                              hintText: '30',
+                              isDense: true,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: isSaving
+                              ? null
+                              : () async {
+                                  final nombre = nombreCtrl.text.trim();
+                                  final peso = double.tryParse(pesoCtrl.text.replaceAll(',', '.').trim());
+                                  if (nombre.isEmpty || peso == null || peso <= 0 || peso > 100) {
+                                    _mostrarError('Ingrese un nombre y un peso entre 1 y 100.');
+                                    return;
+                                  }
+                                  setS(() => isSaving = true);
+                                  try {
+                                    final nuevo = await _supabaseService.crearCategoriaMateria(
+                                      materiaId: _selectedMateriaId!,
+                                      nombre: nombre,
+                                      pesoPorc: peso,
+                                    );
+                                    setState(() => _categorias.add(nuevo));
+                                    setS(() {
+                                      categoriasLocales.add(nuevo);
+                                      nombreCtrl.clear();
+                                      pesoCtrl.clear();
+                                      isSaving = false;
+                                    });
+                                  } catch (e) {
+                                    if (ctx.mounted) _mostrarError('Error: $e');
+                                    if (ctx.mounted) setS(() => isSaving = false);
+                                  }
+                                },
+                          child: isSaving
+                              ? const SizedBox(width: 18, height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Text('Agregar'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dlgCtx).pop(),
+                child: const Text('Cerrar'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+
+    nombreCtrl.dispose();
+    pesoCtrl.dispose();
   }
 }
