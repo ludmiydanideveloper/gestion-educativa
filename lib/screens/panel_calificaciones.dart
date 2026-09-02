@@ -1248,7 +1248,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             <!-- ===== ENCABEZADO ===== -->
             <div class="header-wrap" style="position:relative;">
               <div class="header-left">
-                <img src="$kLogoBase64" alt="Logo Instituto" style="height:52px; width:auto; object-fit:contain;">
+                <img src="$kLogoBase64" alt="Logo Instituto" style="height:68px; width:auto; object-fit:contain;">
                 <div class="inst-sep"></div>
                 <div class="inst-loc">B&nbsp;A&nbsp;R&nbsp;A&nbsp;D&nbsp;E&nbsp;R&nbsp;O</div>
               </div>
@@ -1329,14 +1329,15 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
         titulo: alumnoEspecifico != null
             ? 'Boletín - ${alumnoEspecifico.nombre}'
             : 'Boletín',
+        mostrarEncabezado: false,
         htmlContentBody: '''
           <style>
-            @page { size: A4 landscape; margin: 6mm; }
+            @page { size: A4 landscape; margin: 5mm; }
             * { box-sizing: border-box; }
-            body { font-family: Arial, Helvetica, sans-serif; font-size: 9px; color: #111; margin: 0; }
+            body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
 
             .boletin-page {
-              padding: 4mm 5mm;
+              padding: 3mm 4mm;
               page-break-after: always;
               background: #fff;
             }
@@ -1346,33 +1347,33 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               display: flex;
               justify-content: space-between;
               align-items: center;
-              margin-bottom: 3px;
+              margin-bottom: 2px;
             }
             .header-left { display: flex; align-items: center; gap: 10px; }
-            .inst-sep { width: 1px; height: 36px; background: #bbb; }
-            .inst-loc { font-size: 8.5px; letter-spacing: 2px; color: #1565C0; font-weight: bold; }
+            .inst-sep { width: 1px; height: 42px; background: #bbb; }
+            .inst-loc { font-size: 16px; letter-spacing: 3px; color: #1565C0; font-weight: bold; }
             .header-center {
               position: absolute; left: 50%; transform: translateX(-50%);
-              font-size: 14px; font-weight: bold; color: #1565C0;
-              letter-spacing: 1px;
+              font-size: 18px; font-weight: bold; color: #1565C0;
+              letter-spacing: 2px;
             }
-            .header-right { font-size: 10px; font-weight: bold; letter-spacing: 1px; }
-            .hr-thin { border: none; border-top: 1.5px solid #1565C0; margin: 3px 0 4px; }
+            .header-right { font-size: 16px; font-weight: bold; letter-spacing: 1px; }
+            .hr-thin { border: none; border-top: 1.5px solid #1565C0; margin: 2px 0 4px; }
 
             /* --- ALUMNO --- */
             .alumno-row {
               display: flex;
               justify-content: space-between;
               align-items: flex-end;
-              font-size: 9.5px;
-              margin-bottom: 5px;
+              font-size: 14px;
+              margin-bottom: 4px;
             }
             .lbl { font-weight: bold; }
-            .tray-titulo { font-size: 9.5px; font-weight: bold; color: #1565C0; }
+            .tray-titulo { font-size: 14px; font-weight: bold; color: #1565C0; }
 
             /* --- TABLA --- */
             .tbl {
-              width: 86%;
+              width: 88%;
               margin: 0 auto;
               border-collapse: collapse;
             }
@@ -1381,24 +1382,24 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             .th-mat {
               background: #D9E1F2; font-weight: bold;
               text-align: center; vertical-align: middle;
-              font-size: 9px; padding: 4px 5px;
-              width: 18%;
+              font-size: 11px; padding: 3px 4px;
+              width: 17%;
             }
             .th-group {
               background: #D9E1F2; font-weight: bold;
-              text-align: center; font-size: 9px; padding: 3px 3px;
+              text-align: center; font-size: 11px; padding: 2px 2px;
             }
             .th-r {
-              width: 5.2%; padding: 2px 1px;
+              width: 5%; padding: 2px 1px;
               vertical-align: bottom; text-align: center;
               background: #fff;
-              height: 100px;
+              height: 90px;
             }
             .rot {
               display: inline-block;
               writing-mode: vertical-rl;
               transform: rotate(180deg);
-              font-size: 8.5px;
+              font-size: 9px;
               font-weight: bold;
               white-space: nowrap;
               text-align: left;
@@ -1406,17 +1407,17 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
             .td-mat {
               text-align: left; font-weight: bold;
-              font-size: 9px; padding: 5px 5px;
+              font-size: 11px; padding: 4px 4px;
             }
             .td-c {
-              text-align: center; font-size: 9px;
-              padding: 3px 2px;
+              text-align: center; font-size: 11px;
+              padding: 2px 1px;
             }
-            .td-tray { font-weight: bold; font-size: 8.5px; }
-            .td-final { font-weight: bold; font-size: 10px; }
+            .td-tray { font-weight: bold; font-size: 10px; }
+            .td-final { font-weight: bold; font-size: 11px; }
             .td-foot {
               background: #f2f2f2; font-weight: bold;
-              font-size: 8.5px; padding: 3px 5px;
+              font-size: 10px; padding: 2px 4px;
               text-align: left;
             }
 
@@ -1424,23 +1425,23 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             .firmas {
               display: flex;
               justify-content: space-around;
-              margin-top: 12px;
+              margin-top: 8px;
               text-align: center;
-              font-size: 9px;
+              font-size: 11px;
             }
             .firma { width: 26%; }
             .firma-linea {
               border-top: 1px solid #444;
-              margin: 28px 0 3px;
+              margin: 22px 0 3px;
             }
 
             /* --- LEYENDA --- */
             .leyenda {
-              margin-top: 6px;
+              margin-top: 5px;
               border-top: 1px solid #ccc;
               padding-top: 3px;
-              font-size: 8.5px;
-              line-height: 1.6;
+              font-size: 10px;
+              line-height: 1.5;
             }
           </style>
           $contenidoTotal
