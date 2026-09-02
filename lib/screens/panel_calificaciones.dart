@@ -1253,7 +1253,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             <!-- ===== ENCABEZADO ===== -->
             <div class="header-wrap" style="position:relative;">
               <div class="header-left">
-                <img src="$kLogoBase64" alt="Logo Instituto" style="height:80px; width:auto; object-fit:contain;">
+                <img src="$kLogoBase64" alt="Logo Instituto" style="height:100px; width:auto; object-fit:contain;">
                 <div class="inst-sep"></div>
                 <div class="inst-loc">B&nbsp;A&nbsp;R&nbsp;A&nbsp;D&nbsp;E&nbsp;R&nbsp;O</div>
               </div>
@@ -1433,14 +1433,14 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             .firmas {
               display: flex;
               justify-content: space-around;
-              margin-top: 5px;
+              margin-top: 10px;
               text-align: center;
-              font-size: 10px;
+              font-size: 11px;
             }
             .firma { width: 26%; }
             .firma-linea {
-              border-top: 1px solid #444;
-              margin: 16px 0 2px;
+              border-top: 1.5px solid #444;
+              margin: 32px 0 4px;
             }
 
             /* --- LEYENDA --- */
