@@ -1266,7 +1266,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                 &emsp;
                 <span class="lbl">AÑO:</span> <strong>$identificadorDivision</strong>
               </div>
-              <div class="tray-titulo">INFORME DE TRAYECTORIA $anio</div>
+              <div class="tray-titulo">INFORME DE TRAYECTORIA ${DateTime.now().month <= 7 ? 'MARZO-JULIO' : 'AGOSTO-DICIEMBRE'} $anio</div>
             </div>
 
             <!-- ===== TABLA PRINCIPAL ===== -->
@@ -1316,7 +1316,15 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               <strong>Apreciaciones:</strong>&nbsp; S: Sobresaliente &ndash; MB: Muy bueno &ndash; B: Bueno &ndash; R: Regular<br>
               <strong>TEA:</strong> Trayectoria Educativa Avanzada &nbsp;&ndash;&nbsp;
               <strong>TEP:</strong> Trayectoria Educativa en Proceso &nbsp;&ndash;&nbsp;
-              <strong>TED:</strong> Trayectoria Educativa Discontinua
+              <strong>TED:</strong> Trayectoria Educativa Discontinua<br>
+              <strong>*AIC:</strong> Acuerdos Institucionales de Convivencia.&nbsp;&nbsp;
+              <strong>*INASISTENCIAS:</strong> Actualización según Resolución 1650/24 Régimen Académico; tardanzas se computará &frac14; de falta, total de inasistencias anuales 28.
+            </div>
+
+            <!-- ===== PIE INSTITUCIONAL ===== -->
+            <div class="pie-inst">
+              DIEGEP 8942 &nbsp;&bull;&nbsp; Jujuy y Saavedra, (2942) Baradero, Buenos Aires, Argentina<br>
+              +54 9 3329 489305 &nbsp;&bull;&nbsp; iabar.educacionadventista.com &nbsp;&bull;&nbsp; instituto.iabar@educacionadventista.org.ar
             </div>
 
           </div>
@@ -1440,8 +1448,19 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               margin-top: 5px;
               border-top: 1px solid #ccc;
               padding-top: 3px;
-              font-size: 10px;
+              font-size: 9.5px;
               line-height: 1.5;
+            }
+
+            /* --- PIE INSTITUCIONAL --- */
+            .pie-inst {
+              margin-top: 5px;
+              border-top: 1.5px solid #1565C0;
+              padding-top: 3px;
+              text-align: center;
+              font-size: 9px;
+              color: #444;
+              line-height: 1.6;
             }
           </style>
           $contenidoTotal
