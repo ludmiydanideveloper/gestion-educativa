@@ -1400,20 +1400,17 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               text-align: center; font-size: 10px; padding: 2px;
             }
             .th-r {
-              width: 4.5%; padding: 1px;
-              vertical-align: bottom; text-align: center;
+              width: 4.5%; padding: 2px 1px;
+              vertical-align: middle; text-align: center;
               background: #fff;
-              height: 62px;
-              overflow: hidden;
             }
             .rot {
-              display: inline-block;
-              writing-mode: vertical-rl;
-              transform: rotate(180deg);
-              font-size: 10px;
+              display: block;
+              font-size: 8px;
               font-weight: bold;
-              white-space: nowrap;
-              text-align: left;
+              white-space: normal;
+              word-break: break-word;
+              line-height: 1.2;
             }
 
             .td-mat {
