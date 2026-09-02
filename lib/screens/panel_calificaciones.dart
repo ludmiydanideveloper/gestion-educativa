@@ -2300,24 +2300,24 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
   }) {
     const opciones = ['S', 'MB', 'B', 'R'];
 
-    Color bgFor(String v) => switch (v) {
-      'S'  => const Color(0xFFD1FAE5),
-      'MB' => const Color(0xFFDBEAFE),
-      'B'  => const Color(0xFFFEF3C7),
-      _    => const Color(0xFFFEE2E2),
-    };
-    Color fgFor(String v) => switch (v) {
-      'S'  => const Color(0xFF065F46),
-      'MB' => const Color(0xFF1E3A8A),
-      'B'  => const Color(0xFF92400E),
-      _    => const Color(0xFF991B1B),
-    };
-    Color bdrFor(String v) => switch (v) {
-      'S'  => const Color(0xFF34D399),
-      'MB' => const Color(0xFF60A5FA),
-      'B'  => const Color(0xFFFBBF24),
-      _    => const Color(0xFFF87171),
-    };
+    Color bgFor(String v) {
+      if (v == 'S')  return const Color(0xFFD1FAE5);
+      if (v == 'MB') return const Color(0xFFDBEAFE);
+      if (v == 'B')  return const Color(0xFFFEF3C7);
+      return const Color(0xFFFEE2E2);
+    }
+    Color fgFor(String v) {
+      if (v == 'S')  return const Color(0xFF065F46);
+      if (v == 'MB') return const Color(0xFF1E3A8A);
+      if (v == 'B')  return const Color(0xFF92400E);
+      return const Color(0xFF991B1B);
+    }
+    Color bdrFor(String v) {
+      if (v == 'S')  return const Color(0xFF34D399);
+      if (v == 'MB') return const Color(0xFF60A5FA);
+      if (v == 'B')  return const Color(0xFFFBBF24);
+      return const Color(0xFFF87171);
+    }
 
     return SizedBox(
       width: 142,
