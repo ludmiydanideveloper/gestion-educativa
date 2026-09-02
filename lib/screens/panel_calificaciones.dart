@@ -1253,7 +1253,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             <!-- ===== ENCABEZADO ===== -->
             <div class="header-wrap" style="position:relative;">
               <div class="header-left">
-                <img src="$kLogoBase64" alt="Logo Instituto" style="height:62px; width:auto; object-fit:contain;">
+                <img src="$kLogoBase64" alt="Logo Instituto" style="height:80px; width:auto; object-fit:contain;">
                 <div class="inst-sep"></div>
                 <div class="inst-loc">B&nbsp;A&nbsp;R&nbsp;A&nbsp;D&nbsp;E&nbsp;R&nbsp;O</div>
               </div>
