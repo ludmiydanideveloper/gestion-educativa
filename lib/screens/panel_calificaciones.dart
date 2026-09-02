@@ -1253,7 +1253,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             <!-- ===== ENCABEZADO ===== -->
             <div class="header-wrap" style="position:relative;">
               <div class="header-left">
-                <img src="$kLogoBase64" alt="Logo Instituto" style="height:68px; width:auto; object-fit:contain;">
+                <img src="$kLogoBase64" alt="Logo Instituto" style="height:62px; width:auto; object-fit:contain;">
                 <div class="inst-sep"></div>
                 <div class="inst-loc">B&nbsp;A&nbsp;R&nbsp;A&nbsp;D&nbsp;E&nbsp;R&nbsp;O</div>
               </div>
@@ -1264,13 +1264,9 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
             <!-- ===== DATOS DEL ALUMNO ===== -->
             <div class="alumno-row">
-              <span class="lbl">ALUMNO/A:</span>&nbsp;<strong>${alumno.nombre.toUpperCase()}</strong>
-              &emsp;
-              <span class="lbl">DNI:</span>&nbsp;<strong>$dni</strong>
-              &emsp;
-              <span class="lbl">AÑO:</span>&nbsp;<strong>$identificadorDivision</strong>
-              &emsp;
-              <span class="lbl">${DateTime.now().month <= 7 ? 'MARZO-JULIO' : 'AGOSTO-DICIEMBRE'} $anio</span>
+              <span><span class="lbl">ALUMNO/A:</span>&nbsp;<strong>${alumno.nombre.toUpperCase()}</strong></span>
+              <span><span class="lbl">DNI:</span>&nbsp;<strong>$dni</strong></span>
+              <span><span class="lbl">AÑO:</span>&nbsp;<strong>$identificadorDivision</strong></span>
             </div>
 
             <!-- ===== TABLA PRINCIPAL ===== -->
@@ -1365,10 +1361,10 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             }
             .header-left { display: flex; align-items: center; gap: 8px; }
             .inst-sep { width: 1px; height: 36px; background: #bbb; }
-            .inst-loc { font-size: 14px; letter-spacing: 2px; color: #1565C0; font-weight: bold; }
+            .inst-loc { font-size: 10px; letter-spacing: 2px; color: #1565C0; font-weight: bold; }
             .header-center {
               position: absolute; left: 50%; transform: translateX(-50%);
-              font-size: 13px; font-weight: bold; color: #1565C0;
+              font-size: 13px; font-weight: bold; color: #111;
               letter-spacing: 1px;
             }
             .header-right { font-size: 14px; font-weight: bold; letter-spacing: 1px; }
@@ -1377,10 +1373,11 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             /* --- ALUMNO --- */
             .alumno-row {
               display: flex;
-              align-items: flex-end;
-              font-size: 13px;
+              justify-content: flex-end;
+              align-items: center;
+              font-size: 12px;
               margin-bottom: 3px;
-              gap: 16px;
+              gap: 20px;
             }
             .lbl { font-weight: bold; }
 
@@ -1406,13 +1403,14 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               width: 4.5%; padding: 1px;
               vertical-align: bottom; text-align: center;
               background: #fff;
-              height: 72px;
+              height: 62px;
+              overflow: hidden;
             }
             .rot {
               display: inline-block;
               writing-mode: vertical-rl;
               transform: rotate(180deg);
-              font-size: 8px;
+              font-size: 10px;
               font-weight: bold;
               white-space: nowrap;
               text-align: left;
