@@ -1834,8 +1834,8 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                   scrollDirection: Axis.horizontal,
                                   child: DataTable(
                                     headingRowColor: WidgetStateProperty.all(colorScheme.surfaceContainerHighest.withAlpha(128)),
-                                    columnSpacing: 24.0,
-                                    horizontalMargin: 16.0,
+                                    columnSpacing: 6.0,
+                                    horizontalMargin: 10.0,
                                     columns: [
                                       // Columna Alumno
                                       const DataColumn(
@@ -1865,7 +1865,9 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                         }
 
                                         return DataColumn(
-                                          label: InkWell(
+                                          label: SizedBox(
+                                            width: 100,
+                                            child: InkWell(
                                             onTap: () {
                                               final fStr = act['created_at'] != null ? act['created_at'].toString().split('T')[0] : (act['fecha']?.toString().split('T')[0] ?? 'Fecha actual');
                                               final regPor = act['registrado_por'] ?? Supabase.instance.client.auth.currentUser?.email ?? 'Docente / Administrador';
@@ -1914,9 +1916,13 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                                       if (esTarea) const Icon(Icons.check_box, size: 14, color: Colors.green),
                                                       if (esConducta) Icon(Icons.psychology_alt_outlined, size: 14, color: Colors.amber.shade900),
                                                       if (esInfo || esTarea || esConducta) const SizedBox(width: 4),
-                                                      Text(
-                                                        cleanTitulo,
-                                                        style: TextStyle(fontWeight: FontWeight.bold, color: headerColor),
+                                                      Flexible(
+                                                        child: Text(
+                                                          cleanTitulo,
+                                                          style: TextStyle(fontWeight: FontWeight.bold, color: headerColor, fontSize: 11),
+                                                          overflow: TextOverflow.ellipsis,
+                                                          maxLines: 2,
+                                                        ),
                                                       ),
                                                     ],
                                                   ),
@@ -1928,6 +1934,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                               ),
                                             ),
                                           ),
+                                          ), // SizedBox width:100
                                         );
                                       }),
                                       if (_actividades.any((act) => act['titulo'].toString().startsWith('[TAREA]')))

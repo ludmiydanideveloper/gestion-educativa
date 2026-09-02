@@ -2269,13 +2269,13 @@ class SupabaseService {
 
   // ─── Categorías por materia (grupos de calificación del docente) ──────────
 
-  /// Devuelve las categorías de una materia: primero las propias (materia_id = materiaId),
-  /// luego las globales (materia_id IS NULL), ordenadas por nombre.
+  /// Devuelve SOLO las categorías propias de la materia (creadas por el docente).
+  /// No incluye las categorías globales compartidas — cada docente define las suyas.
   Future<List<Map<String, dynamic>>> obtenerCategoriasMateria(String materiaId) async {
     final response = await _client
         .from('aca_categorias_nota')
         .select('id, nombre, peso_porcentaje, materia_id')
-        .or('materia_id.eq.$materiaId,materia_id.is.null')
+        .eq('materia_id', materiaId)
         .order('nombre', ascending: true);
     return List<Map<String, dynamic>>.from(response);
   }
