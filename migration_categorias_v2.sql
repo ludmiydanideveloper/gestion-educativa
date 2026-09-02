@@ -10,7 +10,7 @@ ALTER TABLE aca_categorias_nota
     REFERENCES acad_materias(materia_id) ON DELETE CASCADE;
 
 -- 2. Peso individual por actividad (Modo A: porcentaje por nota).
-ALTER TABLE acad_actividades
+ALTER TABLE aca_actividades
   ADD COLUMN IF NOT EXISTS peso_porcentaje_actividad NUMERIC(5,2);
 
 -- 3. Tabla de configuración de modo de calificación por materia.
