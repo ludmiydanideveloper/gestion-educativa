@@ -1257,21 +1257,20 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                 <div class="inst-sep"></div>
                 <div class="inst-loc">B&nbsp;A&nbsp;R&nbsp;A&nbsp;D&nbsp;E&nbsp;R&nbsp;O</div>
               </div>
-              <div class="header-center">BOLETÍN</div>
+              <div class="header-center">BOLETÍN ACADÉMICO</div>
               <div class="header-right">NIVEL SECUNDARIO</div>
             </div>
             <hr class="hr-thin">
 
             <!-- ===== DATOS DEL ALUMNO ===== -->
             <div class="alumno-row">
-              <div>
-                <span class="lbl">ALUMNO/A:</span> <strong>${alumno.nombre.toUpperCase()}</strong>
-                &emsp;
-                <span class="lbl">DNI:</span> <strong>$dni</strong>
-                &emsp;
-                <span class="lbl">AÑO:</span> <strong>$identificadorDivision</strong>
-              </div>
-              <div class="tray-titulo">INFORME DE TRAYECTORIA ${DateTime.now().month <= 7 ? 'MARZO-JULIO' : 'AGOSTO-DICIEMBRE'} $anio</div>
+              <span class="lbl">ALUMNO/A:</span>&nbsp;<strong>${alumno.nombre.toUpperCase()}</strong>
+              &emsp;
+              <span class="lbl">DNI:</span>&nbsp;<strong>$dni</strong>
+              &emsp;
+              <span class="lbl">AÑO:</span>&nbsp;<strong>$identificadorDivision</strong>
+              &emsp;
+              <span class="lbl">${DateTime.now().month <= 7 ? 'MARZO-JULIO' : 'AGOSTO-DICIEMBRE'} $anio</span>
             </div>
 
             <!-- ===== TABLA PRINCIPAL ===== -->
@@ -1347,12 +1346,12 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
         mostrarEncabezado: false,
         htmlContentBody: '''
           <style>
-            @page { size: A4 landscape; margin: 5mm; }
+            @page { size: A4 landscape; margin: 4mm; }
             * { box-sizing: border-box; }
-            body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
+            body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #111; margin: 0; padding: 0; }
 
             .boletin-page {
-              padding: 3mm 4mm;
+              padding: 2mm 3mm;
               page-break-after: always;
               background: #fff;
             }
@@ -1362,33 +1361,32 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               display: flex;
               justify-content: space-between;
               align-items: center;
-              margin-bottom: 2px;
+              margin-bottom: 1px;
             }
-            .header-left { display: flex; align-items: center; gap: 10px; }
-            .inst-sep { width: 1px; height: 42px; background: #bbb; }
-            .inst-loc { font-size: 16px; letter-spacing: 3px; color: #1565C0; font-weight: bold; }
+            .header-left { display: flex; align-items: center; gap: 8px; }
+            .inst-sep { width: 1px; height: 36px; background: #bbb; }
+            .inst-loc { font-size: 14px; letter-spacing: 2px; color: #1565C0; font-weight: bold; }
             .header-center {
               position: absolute; left: 50%; transform: translateX(-50%);
-              font-size: 18px; font-weight: bold; color: #1565C0;
-              letter-spacing: 2px;
+              font-size: 13px; font-weight: bold; color: #1565C0;
+              letter-spacing: 1px;
             }
-            .header-right { font-size: 16px; font-weight: bold; letter-spacing: 1px; }
-            .hr-thin { border: none; border-top: 1.5px solid #1565C0; margin: 2px 0 4px; }
+            .header-right { font-size: 14px; font-weight: bold; letter-spacing: 1px; }
+            .hr-thin { border: none; border-top: 1.5px solid #1565C0; margin: 1px 0 3px; }
 
             /* --- ALUMNO --- */
             .alumno-row {
               display: flex;
-              justify-content: space-between;
               align-items: flex-end;
-              font-size: 14px;
-              margin-bottom: 4px;
+              font-size: 13px;
+              margin-bottom: 3px;
+              gap: 16px;
             }
             .lbl { font-weight: bold; }
-            .tray-titulo { font-size: 14px; font-weight: bold; color: #1565C0; }
 
             /* --- TABLA --- */
             .tbl {
-              width: 88%;
+              width: 92%;
               margin: 0 auto;
               border-collapse: collapse;
             }
@@ -1397,24 +1395,24 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             .th-mat {
               background: #D9E1F2; font-weight: bold;
               text-align: center; vertical-align: middle;
-              font-size: 11px; padding: 3px 4px;
-              width: 17%;
+              font-size: 10px; padding: 2px 3px;
+              width: 15%;
             }
             .th-group {
               background: #D9E1F2; font-weight: bold;
-              text-align: center; font-size: 11px; padding: 2px 2px;
+              text-align: center; font-size: 10px; padding: 2px;
             }
             .th-r {
-              width: 5%; padding: 2px 1px;
+              width: 4.5%; padding: 1px;
               vertical-align: bottom; text-align: center;
               background: #fff;
-              height: 90px;
+              height: 72px;
             }
             .rot {
               display: inline-block;
               writing-mode: vertical-rl;
               transform: rotate(180deg);
-              font-size: 9px;
+              font-size: 8px;
               font-weight: bold;
               white-space: nowrap;
               text-align: left;
@@ -1422,17 +1420,17 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
             .td-mat {
               text-align: left; font-weight: bold;
-              font-size: 11px; padding: 4px 4px;
+              font-size: 10px; padding: 3px 4px;
             }
             .td-c {
-              text-align: center; font-size: 11px;
+              text-align: center; font-size: 10px;
               padding: 2px 1px;
             }
-            .td-tray { font-weight: bold; font-size: 10px; }
-            .td-final { font-weight: bold; font-size: 11px; }
+            .td-tray { font-weight: bold; font-size: 9px; }
+            .td-final { font-weight: bold; font-size: 10px; }
             .td-foot {
               background: #f2f2f2; font-weight: bold;
-              font-size: 10px; padding: 2px 4px;
+              font-size: 9.5px; padding: 2px 4px;
               text-align: left;
             }
 
@@ -1440,34 +1438,34 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             .firmas {
               display: flex;
               justify-content: space-around;
-              margin-top: 8px;
+              margin-top: 5px;
               text-align: center;
-              font-size: 11px;
+              font-size: 10px;
             }
             .firma { width: 26%; }
             .firma-linea {
               border-top: 1px solid #444;
-              margin: 22px 0 3px;
+              margin: 16px 0 2px;
             }
 
             /* --- LEYENDA --- */
             .leyenda {
-              margin-top: 5px;
+              margin-top: 4px;
               border-top: 1px solid #ccc;
-              padding-top: 3px;
-              font-size: 9.5px;
-              line-height: 1.5;
+              padding-top: 2px;
+              font-size: 8.5px;
+              line-height: 1.4;
             }
 
             /* --- PIE INSTITUCIONAL --- */
             .pie-inst {
-              margin-top: 5px;
-              border-top: 1.5px solid #1565C0;
-              padding-top: 3px;
+              margin-top: 3px;
+              border-top: 1px solid #1565C0;
+              padding-top: 2px;
               text-align: center;
-              font-size: 9px;
+              font-size: 8px;
               color: #444;
-              line-height: 1.6;
+              line-height: 1.5;
             }
           </style>
           $contenidoTotal
