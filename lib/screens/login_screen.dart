@@ -89,12 +89,12 @@ class _LoginScreenState extends State<LoginScreen> {
         height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              Color(0xFF0C2431),
-              Color(0xFF163E52),
-              Color(0xFF1B4F68),
+              Color(0xFF1565C0), // azul escolar
+              Color(0xFF0D3B6E), // azul marino
+              Color(0xFF01579B), // azul medio
             ],
           ),
         ),
@@ -122,36 +122,36 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 28.0),
 
-                    // Tarjeta blanca centrada (Modelo Disney+)
+                    // Tarjeta con borde redondeado, sombra suave
                     Card(
-                      elevation: 16.0,
-                      shadowColor: Colors.black.withAlpha(100),
+                      elevation: 12.0,
+                      shadowColor: Colors.black.withAlpha(80),
                       color: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(28.0),
+                        borderRadius: BorderRadius.circular(24.0),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 36.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 32.0),
                         child: Form(
                           key: _formKey,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               const Text(
-                                'Escribir correo para continuar',
+                                'Iniciar sesión',
                                 style: TextStyle(
-                                  fontSize: 23.0,
+                                  fontSize: 22.0,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF1E293B),
+                                  color: Color(0xFF0D3B6E),
                                   letterSpacing: -0.3,
                                 ),
                               ),
-                              const SizedBox(height: 12.0),
+                              const SizedBox(height: 8.0),
                               Text(
-                                'Es necesario que inicies sesión con tu cuenta institucional. En caso de no tener una, recibirás indicaciones de administración o preceptoría para crearla.',
+                                'Ingresá con tu cuenta institucional.',
                                 style: TextStyle(
                                   fontSize: 13.5,
-                                  height: 1.45,
+                                  height: 1.4,
                                   color: Colors.grey.shade600,
                                 ),
                               ),
@@ -261,17 +261,17 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               const SizedBox(height: 28.0),
 
-                              // Botón de Envío estilo Disney+ (negro redondeado prominente)
+                              // Botón principal azul institucional
                               ElevatedButton(
                                 onPressed: _isLoading ? null : _handleLogin,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF000000),
+                                  backgroundColor: const Color(0xFF1565C0),
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 18.0),
+                                  padding: const EdgeInsets.symmetric(vertical: 16.0),
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(30.0),
+                                    borderRadius: BorderRadius.circular(14.0),
                                   ),
-                                  elevation: 0,
+                                  elevation: 2,
                                 ),
                                 child: _isLoading
                                     ? const SizedBox(

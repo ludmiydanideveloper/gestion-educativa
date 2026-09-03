@@ -852,17 +852,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
                         child: Icon(Icons.class_rounded, color: colorScheme.primary),
                       ),
                       title: Text(materiaName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                      trailing: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: colorScheme.primary,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          cursoName,
-                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                        ),
-                      ),
+                      subtitle: Text(cursoName, style: TextStyle(fontSize: 12, color: colorScheme.primary, fontWeight: FontWeight.w600)),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => PanelGestionMateria(

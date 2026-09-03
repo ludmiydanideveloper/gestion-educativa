@@ -463,36 +463,6 @@ class _PanelConductaState extends State<PanelConducta> {
           const SizedBox(height: 16),
           _buildMetricsCard(colorScheme),
           
-          // Banner informativo sobre el Plan RITE Desempeño
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFFBEB),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFFCD34D)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.auto_awesome_rounded, color: Color(0xFFD97706), size: 24),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Integración RITE en Desempeño Diario (30%)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF92400E))),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Ingrese al botón superior "Conducta Diaria (30% RITE)" para registrar asistencias y comportamiento. Una vez por mes, pulse "Generar Nota Mes" para calcular el promedio (TEA/TEP/TED) e inyectar automáticamente la calificación a la Planilla del curso.',
-                        style: TextStyle(fontSize: 11, color: Colors.amber.shade900, height: 1.3),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
           
           // Selector de Vista (Incidencias vs Conducta Diaria)
           Padding(

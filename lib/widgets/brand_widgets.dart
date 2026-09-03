@@ -43,27 +43,82 @@ class BrandLogo extends StatelessWidget {
   }
 
   Widget _buildFallbackLogo(BuildContext context) {
-    return Container(
-      height: height,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F3057).withAlpha(15),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF0F3057).withAlpha(40), width: 1.5),
-      ),
+    // Logo generado con widgets: escudo + ícono + texto
+    final double sz = height;
+    return SizedBox(
+      height: sz,
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(Icons.auto_stories_rounded, size: height * 0.6, color: const Color(0xFF0F3057)),
-          const SizedBox(width: 8),
-          Text(
-            'SGE',
-            style: TextStyle(
-              fontSize: height * 0.45,
-              fontWeight: FontWeight.w900,
-              color: const Color(0xFF0F3057),
+          // Escudo / emblema
+          Container(
+            width: sz * 0.75,
+            height: sz,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF1565C0), Color(0xFF0D3B6E)],
+              ),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(sz * 0.15),
+                topRight: Radius.circular(sz * 0.15),
+                bottomLeft: Radius.circular(sz * 0.35),
+                bottomRight: Radius.circular(sz * 0.35),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF1565C0).withAlpha(80),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.school_rounded, color: Colors.white, size: sz * 0.38),
+                SizedBox(height: sz * 0.04),
+                Text(
+                  'SGE',
+                  style: TextStyle(
+                    color: const Color(0xFFFDD835),
+                    fontSize: sz * 0.22,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2,
+                  ),
+                ),
+              ],
             ),
           ),
+          if (showText) ...[
+            SizedBox(width: sz * 0.12),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'SGE',
+                  style: TextStyle(
+                    fontSize: sz * 0.28,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF0D3B6E),
+                    letterSpacing: 1,
+                  ),
+                ),
+                Text(
+                  'Gestión Educativa',
+                  style: TextStyle(
+                    fontSize: sz * 0.14,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF1565C0),
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

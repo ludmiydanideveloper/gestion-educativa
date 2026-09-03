@@ -8,8 +8,8 @@ import 'panel_temarios_preceptor.dart';
 import 'panel_planificacion_diaria.dart';
 import 'panel_eoe_docente.dart';
 import 'panel_banco_evaluaciones.dart';
-import 'panel_cierre_etapa.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/calendario_docente.dart';
 
 class PanelGestionMateria extends StatelessWidget {
   final String materiaId;
@@ -131,8 +131,15 @@ class PanelGestionMateria extends StatelessWidget {
                           ],
                         ),
                         TextButton.icon(
-                          onPressed: () => _abrirCalendarioMateriaDialog(context),
-                          icon: const Icon(Icons.calendar_today_rounded, size: 14),
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => CalendarioDocente(
+                                cursoIdInicial: cursoId,
+                                cursNombreInicial: identificadorDivision,
+                              ),
+                            ),
+                          ),
+                          icon: const Icon(Icons.calendar_month_rounded, size: 14),
                           label: const Text('Ver Calendario Completo', style: TextStyle(fontSize: 12)),
                         ),
                       ],
@@ -361,22 +368,6 @@ class PanelGestionMateria extends StatelessWidget {
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (context) => PanelBancoEvaluaciones(
-                        materiaId: materiaId,
-                        cursoId: cursoId,
-                        nombreAsignatura: nombreAsignatura,
-                      ),
-                    ),
-                  ),
-                ),
-                _buildSlenderActionCard(
-                  context: context,
-                  title: 'Cierre de Etapa (Boletín)',
-                  description: 'Cargar criterios cualitativos y promediar notas (TEA/TEP/TED)',
-                  icon: Icons.grading_rounded,
-                  color: Colors.red.shade700,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => PanelCierreEtapa(
                         materiaId: materiaId,
                         cursoId: cursoId,
                         nombreAsignatura: nombreAsignatura,
