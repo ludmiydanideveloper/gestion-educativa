@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/supabase_service.dart';
 import 'panel_asistencia.dart';
 import 'panel_calificaciones.dart';
 import 'panel_conducta.dart';
@@ -393,102 +394,170 @@ class PanelGestionMateria extends StatelessWidget {
 
   void _abrirCalendarioMateriaDialog(BuildContext context) {
     final titleController = TextEditingController();
-    final dateController = TextEditingController(text: '15/07/2026');
+    DateTime? fechaSeleccionada;
+    bool guardando = false;
+
+    final service = SupabaseService();
 
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-          titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-          contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          actionsPadding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-          title: Row(
-            children: [
-              const Icon(Icons.calendar_month_rounded, color: Colors.deepOrange, size: 26),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Calendario: $nombreAsignatura',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  overflow: TextOverflow.ellipsis,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setDlg) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+            titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+            contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            actionsPadding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            title: Row(
+              children: [
+                const Icon(Icons.calendar_month_rounded, color: Colors.deepOrange, size: 26),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Calendario: $nombreAsignatura',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.deepOrange.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.deepOrange.shade200),
+                      ),
+                      child: const Text(
+                        'Agendá un examen o entrega de TP. Quedará visible en el Calendario General escolar.',
+                        style: TextStyle(fontSize: 13, height: 1.4),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: titleController,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: InputDecoration(
+                        labelText: 'Nombre del Evento',
+                        hintText: 'Ej. Examen Parcial Unidad 3',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.edit_note_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Selector de fecha con date picker
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () async {
+                        final hoy = DateTime.now();
+                        final picked = await showDatePicker(
+                          context: ctx,
+                          initialDate: fechaSeleccionada ?? hoy,
+                          firstDate: DateTime(hoy.year - 1),
+                          lastDate: DateTime(hoy.year + 2),
+                          locale: const Locale('es'),
+                        );
+                        if (picked != null) {
+                          setDlg(() => fechaSeleccionada = picked);
+                        }
+                      },
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'Fecha del Evento',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          prefixIcon: const Icon(Icons.event_rounded),
+                          suffixIcon: const Icon(Icons.arrow_drop_down),
+                        ),
+                        child: Text(
+                          fechaSeleccionada != null
+                            ? '${fechaSeleccionada!.day.toString().padLeft(2, '0')}/${fechaSeleccionada!.month.toString().padLeft(2, '0')}/${fechaSeleccionada!.year}'
+                            : 'Tocá para elegir la fecha',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: fechaSeleccionada != null ? null : Colors.grey,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                  ],
                 ),
               ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: guardando ? null : () => Navigator.pop(ctx),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton.icon(
+                icon: guardando
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.event_available_rounded, size: 18),
+                label: const Text('Agendar'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepOrange,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+                onPressed: guardando ? null : () async {
+                  final titulo = titleController.text.trim();
+                  if (titulo.isEmpty) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(content: Text('Escribí el nombre del evento.')),
+                    );
+                    return;
+                  }
+                  if (fechaSeleccionada == null) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(content: Text('Elegí una fecha para el evento.')),
+                    );
+                    return;
+                  }
+
+                  setDlg(() => guardando = true);
+                  try {
+                    final fechaStr = '${fechaSeleccionada!.year}-${fechaSeleccionada!.month.toString().padLeft(2, '0')}-${fechaSeleccionada!.day.toString().padLeft(2, '0')}';
+                    await service.crearEventoCalendario(
+                      titulo: titulo,
+                      descripcion: '$nombreAsignatura — $identificadorDivision',
+                      fecha: fechaStr,
+                      tipoEvento: 'EVALUACION',
+                      cursoId: cursoId,
+                    );
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('✅ "$titulo" agendado en el Calendario General.'),
+                          backgroundColor: Colors.green.shade800,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    setDlg(() => guardando = false);
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text('Error al agendar: $e'),
+                          backgroundColor: Colors.red.shade800,
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
             ],
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.deepOrange.shade50,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.deepOrange.shade200),
-                    ),
-                    child: const Text(
-                      'Agendá un examen o entrega de TP. Se sincronizará automáticamente con el Calendario General escolar.',
-                      style: TextStyle(fontSize: 13, height: 1.4),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: titleController,
-                    decoration: InputDecoration(
-                      labelText: 'Evento de la Materia',
-                      hintText: 'Ej. Examen Parcial de Unidad 3',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      prefixIcon: const Icon(Icons.edit_note_rounded),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: dateController,
-                    decoration: InputDecoration(
-                      labelText: 'Fecha del Evento',
-                      hintText: 'DD/MM/AAAA',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      prefixIcon: const Icon(Icons.event_rounded),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.event_available_rounded, size: 18),
-              label: const Text('Agendar'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepOrange,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              ),
-              onPressed: () {
-                if (titleController.text.isNotEmpty) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Evento "${titleController.text}" agendado y sincronizado con el Calendario General.'),
-                      backgroundColor: Colors.green.shade800,
-                    ),
-                  );
-                }
-              },
-            ),
-          ],
-        );
+          );
+        });
       },
     );
   }
