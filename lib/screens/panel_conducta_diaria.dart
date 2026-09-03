@@ -400,8 +400,8 @@ class _PanelConductaDiariaState extends State<PanelConductaDiaria> {
           const SizedBox(width: 12),
           FilledButton.icon(
             onPressed: () => _generarNotaDesempenoRite(alumnos),
-            icon: const Icon(Icons.auto_awesome_rounded, size: 16),
-            label: const Text('Generar Nota (30% RITE)'),
+            icon: const Icon(Icons.calculate_rounded, size: 16),
+            label: const Text('Generar Nota'),
             style: FilledButton.styleFrom(backgroundColor: Colors.amber.shade800, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18)),
           ),
         ],
@@ -568,18 +568,11 @@ class _PanelConductaDiariaState extends State<PanelConductaDiaria> {
               ],
             ),
             actions: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                child: ElevatedButton.icon(
-                  onPressed: snapshot.data == null ? null : () => _generarNotaDesempenoRite(snapshot.data!),
-                  icon: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 16),
-                  label: const Text('Generar Nota Mes (30% RITE)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD97706),
-                    elevation: 1,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
+              IconButton(
+                icon: const Icon(Icons.calculate_rounded),
+                tooltip: 'Generar Nota del Mes (30% RITE)',
+                color: const Color(0xFFD97706),
+                onPressed: snapshot.data == null ? null : () => _generarNotaDesempenoRite(snapshot.data!),
               ),
               IconButton(
                 icon: Icon(_verPlanillaMensual ? Icons.view_list_rounded : Icons.calendar_month_rounded),

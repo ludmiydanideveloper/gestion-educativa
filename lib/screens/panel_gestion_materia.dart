@@ -399,55 +399,93 @@ class PanelGestionMateria extends StatelessWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+          titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+          contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
           title: Row(
             children: [
-              const Icon(Icons.calendar_month_rounded, color: Colors.deepOrange),
-              const SizedBox(width: 8),
-              Text('Calendario: $nombreAsignatura'),
+              const Icon(Icons.calendar_month_rounded, color: Colors.deepOrange, size: 26),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Calendario: $nombreAsignatura',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Agendar examen o entrega de TP. Se sincronizará automáticamente con el Calendario General escolar:', style: TextStyle(fontSize: 13, height: 1.3)),
-              const SizedBox(height: 16),
-              TextField(
-                controller: titleController,
-                decoration: const InputDecoration(
-                  labelText: 'Evento de la Materia',
-                  hintText: 'Ej. Examen Parcial de Unidad 3',
-                ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.deepOrange.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.deepOrange.shade200),
+                    ),
+                    child: const Text(
+                      'Agendá un examen o entrega de TP. Se sincronizará automáticamente con el Calendario General escolar.',
+                      style: TextStyle(fontSize: 13, height: 1.4),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: titleController,
+                    decoration: InputDecoration(
+                      labelText: 'Evento de la Materia',
+                      hintText: 'Ej. Examen Parcial de Unidad 3',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      prefixIcon: const Icon(Icons.edit_note_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: dateController,
+                    decoration: InputDecoration(
+                      labelText: 'Fecha del Evento',
+                      hintText: 'DD/MM/AAAA',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      prefixIcon: const Icon(Icons.event_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: dateController,
-                decoration: const InputDecoration(
-                  labelText: 'Fecha del Evento',
-                  hintText: 'DD/MM/AAAA',
-                ),
-              ),
-            ],
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cerrar'),
+              child: const Text('Cancelar'),
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.event_available_rounded, size: 18),
+              label: const Text('Agendar'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepOrange,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
               onPressed: () {
                 if (titleController.text.isNotEmpty) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('¡Evento "${titleController.text}" agendado en la materia y sincronizado con el Calendario General escolar! Se enviaron las notificaciones automáticas correspondientes.'),
+                      content: Text('Evento "${titleController.text}" agendado y sincronizado con el Calendario General.'),
                       backgroundColor: Colors.green.shade800,
                     ),
                   );
                 }
               },
-              child: const Text('Agendar y Sincronizar'),
             ),
           ],
         );

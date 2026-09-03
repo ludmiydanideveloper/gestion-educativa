@@ -2240,7 +2240,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                   const SizedBox(height: 12),
 
                   // ── Selector de modo de calificación ──────────────────────
-                  if (_selectedMateriaId != null)
+                  if (_selectedMateriaId != null && _categorias.isNotEmpty)
                     Row(
                       children: [
                         const Icon(Icons.calculate_outlined, size: 16, color: Colors.blueGrey),
@@ -2290,8 +2290,8 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
                   const SizedBox(height: 12),
 
-                  // Leyenda de Categorías de Evaluación
-                  Wrap(
+                  // Leyenda de Categorías de Evaluación (solo si hay categorías)
+                  if (_categorias.isNotEmpty) Wrap(
                     alignment: WrapAlignment.center,
                     spacing: 8.0,
                     runSpacing: 8.0,
@@ -2567,7 +2567,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
                                               return DataCell(
                                                 PopupMenuButton<double?>(
-                                                  tooltip: 'Seleccionar estado de la tarea',
+                                                  tooltip: alumno.nombre,
                                                   onSelected: (val) {
                                                     if (val != null) {
                                                       _guardarNotaCelda(alumno.id, act['id'] as String, val.toString());
@@ -2576,13 +2576,27 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                                     }
                                                   },
                                                   itemBuilder: (context) => [
+                                                    // Cabecera con el nombre del alumno
+                                                    PopupMenuItem(
+                                                      enabled: false,
+                                                      height: 36,
+                                                      child: Text(
+                                                        alumno.nombre,
+                                                        style: TextStyle(
+                                                          fontWeight: FontWeight.bold,
+                                                          fontSize: 13,
+                                                          color: Colors.blueGrey.shade700,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const PopupMenuDivider(height: 1),
                                                     const PopupMenuItem(
                                                       value: 10.0,
                                                       child: Row(
                                                         children: [
                                                           Icon(Icons.check_circle, color: Colors.green),
                                                           SizedBox(width: 8),
-                                                          Text('✅ SÍ - Hizo la tarea (10 pts)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                                                          Text('SÍ — Hizo la tarea', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                                                         ],
                                                       ),
                                                     ),
@@ -2592,7 +2606,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                                         children: [
                                                           Icon(Icons.remove_circle, color: Colors.orange),
                                                           SizedBox(width: 8),
-                                                          Text('⚠️ REGULAR - Incompleta (6 pts)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                                                          Text('REGULAR — Incompleta', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
                                                         ],
                                                       ),
                                                     ),
@@ -2602,7 +2616,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                                         children: [
                                                           Icon(Icons.cancel, color: Colors.red),
                                                           SizedBox(width: 8),
-                                                          Text('❌ NO - No hizo la tarea (1 pt)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                                                          Text('NO — No hizo la tarea', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
                                                         ],
                                                       ),
                                                     ),
