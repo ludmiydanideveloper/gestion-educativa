@@ -290,16 +290,16 @@ class _PanelConductaDiariaState extends State<PanelConductaDiaria> {
               } catch (_) {}
 
               // 2. Crear actividad en aca_actividades si tenemos materia
+              // Nota: categoriaId es opcional — se crea sin categoría fija
               String? nuevaActividadId;
               if (materiaIdEncontrada.isNotEmpty) {
                 try {
-                  final categorias = await _service.obtenerCategoriasCalificaciones();
-                  final categoriaId = categorias.isNotEmpty ? categorias.first['id'] as String : '1';
                   final act = await _service.crearActividad(
                     materiaId: materiaIdEncontrada,
-                    categoriaId: categoriaId,
-                    titulo: 'Desempeño Diario ($mesNombre - 30% RITE)',
+                    categoriaId: null,   // sin categoría obligatoria
+                    titulo: '[CONDUCTA] Desempeño Diario ($mesNombre)',
                     fecha: DateTime.now(),
+                    tipoActividad: 'CONDUCTA',
                   );
                   nuevaActividadId = act['id'] as String?;
                 } catch (_) {}

@@ -335,23 +335,27 @@ class SupabaseService {
     return docenteData['docente_id'] as String;
   }
 
-  /// Crea una nueva actividad académica para una materia y categoría específica.
+  /// Crea una nueva actividad académica para una materia.
+  /// [categoriaId]: opcional — si es null la nota no pertenece a ninguna categoría/grupo.
+  /// [tipoActividad]: 'NOTA' (default) | 'TAREA' | 'CLASE' | 'INFO' | 'CONDUCTA'.
   /// [pesoPorc]: peso opcional en % para el modo "Porcentaje por Actividad".
   Future<Map<String, dynamic>> crearActividad({
     required String materiaId,
-    required String categoriaId,
+    String? categoriaId,          // ahora opcional
     required String titulo,
     required DateTime fecha,
     double? pesoPorc,
+    String tipoActividad = 'NOTA',
   }) async {
     final docenteId = await obtenerDocenteIdActual();
 
     final data = <String, dynamic>{
       'docente_id': docenteId,
       'materia_id': materiaId,
-      'categoria_id': categoriaId,
+      'categoria_id': categoriaId,   // puede ser null
       'titulo': titulo,
       'fecha': fecha.toIso8601String().substring(0, 10),
+      'tipo_actividad': tipoActividad,
     };
     if (pesoPorc != null) data['peso_porcentaje_actividad'] = pesoPorc;
 
@@ -2269,13 +2273,15 @@ class SupabaseService {
 
   // ─── Categorías por materia (grupos de calificación del docente) ──────────
 
-  /// Devuelve SOLO las categorías propias de la materia (creadas por el docente).
-  /// No incluye las categorías globales compartidas — cada docente define las suyas.
+  /// Devuelve las categorías de una materia específica MÁS las categorías globales
+  /// (materia_id IS NULL, ej. Evidencias / Desempeño / Autoevaluación del seed).
+  /// Así el docente siempre tiene al menos un grupo disponible para cargar notas,
+  /// aunque aún no haya creado categorías propias para su materia.
   Future<List<Map<String, dynamic>>> obtenerCategoriasMateria(String materiaId) async {
     final response = await _client
         .from('aca_categorias_nota')
         .select('id, nombre, peso_porcentaje, materia_id')
-        .eq('materia_id', materiaId)
+        .or('materia_id.eq.$materiaId,materia_id.is.null')
         .order('nombre', ascending: true);
     return List<Map<String, dynamic>>.from(response);
   }

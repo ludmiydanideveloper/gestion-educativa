@@ -347,7 +347,12 @@ class _PanelAsistenciaState extends State<PanelAsistencia> {
                       final totalPresentes = studentMonthRecords.where((r) => (r['tipo'] ?? '').toString().toLowerCase() == 'presente').length;
                       final totalAusentes = studentMonthRecords.where((r) => (r['tipo'] ?? '').toString().toLowerCase() == 'ausente').length;
                       final totalTardes = studentMonthRecords.where((r) => (r['tipo'] ?? '').toString().toLowerCase() == 'tarde').length;
-                      final totalFaltas = totalAusentes + (totalTardes * 0.25);
+                      final totalRetiros = studentMonthRecords.where((r) {
+                        final t = (r['tipo'] ?? '').toString().toLowerCase();
+                        return t == 'retiro_anticipado' || t == 'retiro';
+                      }).length;
+                      // Ausente = 1 falta | Tarde = 0.25 | Retiro anticipado = 0.5
+                      final totalFaltas = totalAusentes + (totalTardes * 0.25) + (totalRetiros * 0.5);
 
                       return DataRow(
                         cells: [
@@ -396,7 +401,8 @@ class _PanelAsistenciaState extends State<PanelAsistencia> {
                             } else if (tipo == 'tarde') {
                               letter = 'T';
                               color = Colors.orange;
-                            } else if (tipo == 'retiro') {
+                            } else if (tipo == 'retiro_anticipado' || tipo == 'retiro') {
+                              // La BD guarda 'RETIRO_ANTICIPADO'; cubrir ambas formas
                               letter = 'R';
                               color = Colors.purple;
                             }

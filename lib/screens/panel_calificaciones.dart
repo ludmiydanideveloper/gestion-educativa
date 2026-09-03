@@ -313,11 +313,9 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
     final messenger = ScaffoldMessenger.of(context);
     final tituloController = TextEditingController();
+    // Sin pre-selección — la categoría es opcional
     String? selectedCategoriaId;
-    if (_categorias.isNotEmpty) {
-      selectedCategoriaId = _categorias.first['id'] as String;
-    }
-    String tipoNota = 'NUMERICA'; // 'NUMERICA', 'TAREA', 'INFORMATIVA', 'CONDUCTA'
+    String tipoNota = 'NUMERICA'; // 'NUMERICA', 'TAREA', 'CLASE', 'INFORMATIVA', 'CONDUCTA'
     DateTime selectedFecha = DateTime.now();
     bool agendarEnCalendario = true;
     double? pesoActividad; // Solo se usa en modo PORCENTAJE
@@ -461,35 +459,32 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                             onChanged: (val) => setModalState(() => tipoNota = val!),
                           ),
                           RadioListTile<String>(
-                            title: const Text('Check de Tareas Sí / No (Evidencias 60%)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.green)),
-                            subtitle: const Text('Entra directamente en el 60% de las evidencias.'),
+                            title: const Text('Entrega de Tarea (Sí / No)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.green)),
+                            subtitle: const Text('Registra si el alumno entregó o no. Al cierre podés asignar una nota final.'),
                             value: 'TAREA',
                             groupValue: tipoNota,
                             dense: true,
-                            onChanged: (val) {
-                              setModalState(() {
-                                tipoNota = val!;
-                                if (_categorias.isNotEmpty) {
-                                  final catEvidencia = _categorias.firstWhere(
-                                    (c) => c['nombre'].toString().toLowerCase().contains('evidencia'),
-                                    orElse: () => _categorias.first,
-                                  );
-                                  selectedCategoriaId = catEvidencia['id'] as String;
-                                }
-                              });
-                            },
+                            onChanged: (val) => setModalState(() => tipoNota = val!),
                           ),
                           RadioListTile<String>(
-                            title: const Text('Nota de Informe (No suma / No promedia)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.purple)),
-                            subtitle: const Text('Casillero informativo sobre cómo van hasta el momento.'),
+                            title: const Text('Actividad en Clase (Sí / No)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.teal)),
+                            subtitle: const Text('Registra si el alumno participó o completó la actividad en clase.'),
+                            value: 'CLASE',
+                            groupValue: tipoNota,
+                            dense: true,
+                            onChanged: (val) => setModalState(() => tipoNota = val!),
+                          ),
+                          RadioListTile<String>(
+                            title: const Text('Nota de Informe (No promedia)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.purple)),
+                            subtitle: const Text('Casillero informativo sobre el proceso hasta el momento.'),
                             value: 'INFORMATIVA',
                             groupValue: tipoNota,
                             dense: true,
                             onChanged: (val) => setModalState(() => tipoNota = val!),
                           ),
                           RadioListTile<String>(
-                            title: const Text('Nota de Conducta Diaria (No suma en RITE)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.amber)),
-                            subtitle: const Text('Casillero para el seguimiento de comportamiento y conducta diaria.'),
+                            title: const Text('Conducta Diaria (No promedia)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.amber)),
+                            subtitle: const Text('Seguimiento de comportamiento y convivencia.'),
                             value: 'CONDUCTA',
                             groupValue: tipoNota,
                             dense: true,
@@ -498,21 +493,29 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                         ],
                       ),
                     ),
-                    if (tipoNota != 'TAREA') ...[
+                    // Categoría: opcional, solo para notas numéricas y solo si hay categorías configuradas
+                    if (tipoNota == 'NUMERICA' && _categorias.isNotEmpty) ...[
                       const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
+                      DropdownButtonFormField<String?>(
                         value: selectedCategoriaId,
                         decoration: const InputDecoration(
-                          labelText: 'Grupo / Categoría de Nota',
+                          labelText: 'Grupo / Categoría (opcional)',
+                          hintText: 'Sin categoría — promedio simple',
                           border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
                         ),
-                        items: _categorias.map((cat) {
-                          final peso = (cat['peso_porcentaje'] as num).toInt();
-                          return DropdownMenuItem<String>(
-                            value: cat['id'] as String,
-                            child: Text('${cat['nombre']} ($peso%)'),
-                          );
-                        }).toList(),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('Sin categoría (promedio simple)'),
+                          ),
+                          ..._categorias.map((cat) {
+                            final peso = (cat['peso_porcentaje'] as num).toInt();
+                            return DropdownMenuItem<String?>(
+                              value: cat['id'] as String,
+                              child: Text('${cat['nombre']} ($peso%)'),
+                            );
+                          }),
+                        ],
                         onChanged: (val) {
                           setModalState(() => selectedCategoriaId = val);
                         },
@@ -580,15 +583,22 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                             );
                             return;
                           }
-                          if (selectedCategoriaId == null) return;
+                          // La categoría es OPCIONAL — ya no es un requisito obligatorio
 
                           String finalTitulo = titulo;
+                          String tipoActividadDB = 'NOTA';
                           if (tipoNota == 'TAREA' && !finalTitulo.startsWith('[TAREA]')) {
                             finalTitulo = '[TAREA] $finalTitulo';
+                            tipoActividadDB = 'TAREA';
+                          } else if (tipoNota == 'CLASE' && !finalTitulo.startsWith('[CLASE]')) {
+                            finalTitulo = '[CLASE] $finalTitulo';
+                            tipoActividadDB = 'CLASE';
                           } else if (tipoNota == 'INFORMATIVA' && !finalTitulo.startsWith('[INFO]')) {
                             finalTitulo = '[INFO] $finalTitulo';
+                            tipoActividadDB = 'INFO';
                           } else if (tipoNota == 'CONDUCTA' && !finalTitulo.startsWith('[CONDUCTA]')) {
                             finalTitulo = '[CONDUCTA] $finalTitulo';
+                            tipoActividadDB = 'CONDUCTA';
                           }
 
                           Navigator.of(builderContext).pop(); // Cerrar modal usando el context interno
@@ -597,9 +607,10 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                           try {
                             await _supabaseService.crearActividad(
                               materiaId: _selectedMateriaId!,
-                              categoriaId: selectedCategoriaId!,
+                              categoriaId: selectedCategoriaId,   // puede ser null
                               titulo: finalTitulo,
                               fecha: selectedFecha,
+                              tipoActividad: tipoActividadDB,
                               pesoPorc: (_modoCalificacion == 'PORCENTAJE' && tipoNota == 'NUMERICA')
                                   ? pesoActividad
                                   : null,
@@ -663,6 +674,323 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
     // Liberar controllers del modal
     tituloController.dispose();
     pesoCtrlModal.dispose();
+  }
+
+  /// Dialog de cierre cuatrimestral para actividades TAREA y CLASE.
+  /// Muestra el resumen de entregadas/total por alumno y permite ingresar
+  /// una nota final que se guarda como columna NOTA en la planilla.
+  /// Calcula el promedio de las notas de conducta diaria registradas para un alumno.
+  double? _calcularPromedioConducita(String alumnoId) {
+    final studentGrades = _grades[alumnoId] ?? {};
+    final actsConducta = _actividades.where((a) =>
+      a['titulo'].toString().startsWith('[CONDUCTA]')).toList();
+    if (actsConducta.isEmpty) return null;
+    final notas = <double>[];
+    for (final act in actsConducta) {
+      final nota = studentGrades[act['id']];
+      if (nota != null) notas.add(nota);
+    }
+    if (notas.isEmpty) return null;
+    return notas.reduce((a, b) => a + b) / notas.length;
+  }
+
+  void _abrirCierreTareasClase() {
+    if (_selectedMateriaId == null) {
+      _mostrarError('Primero seleccioná una materia.');
+      return;
+    }
+
+    // Indica si hay actividades de cada tipo
+    final hayTareasClase = _actividades.any((a) {
+      final t = a['titulo'].toString();
+      return t.startsWith('[TAREA]') || t.startsWith('[CLASE]');
+    });
+    final hayConducita = _actividades.any((a) =>
+      a['titulo'].toString().startsWith('[CONDUCTA]'));
+
+    // Mapas alumnoId → controladores de nota final
+    final Map<String, TextEditingController> ctrlsTarea = {
+      for (final al in _alumnos) al.id: TextEditingController(),
+    };
+    final Map<String, TextEditingController> ctrlsConducita = {
+      for (final al in _alumnos) al.id: TextEditingController(),
+    };
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx2, setDlg) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Row(
+                children: [
+                  Icon(Icons.task_alt_rounded, color: Colors.teal),
+                  SizedBox(width: 10),
+                  Expanded(child: Text('Cierre Cuatrimestral', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                ],
+              ),
+              content: SizedBox(
+                width: 580,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.teal.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.teal.shade200),
+                        ),
+                        child: const Text(
+                          'Ingresá las notas finales de cierre para cada alumno. '
+                          'Cada nota se guarda como una columna numérica independiente que promedia en el RITE.',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                      ),
+
+                      // ── Sección Tareas / Clase ──
+                      if (hayTareasClase) ...[
+                        const SizedBox(height: 20),
+                        Row(children: [
+                          Icon(Icons.checklist_rounded, color: Colors.teal.shade700, size: 18),
+                          const SizedBox(width: 6),
+                          Text('Tareas y Actividades en Clase',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.teal.shade800)),
+                        ]),
+                        const SizedBox(height: 8),
+                        Table(
+                          columnWidths: const {
+                            0: FlexColumnWidth(3),
+                            1: FixedColumnWidth(110),
+                            2: FixedColumnWidth(110),
+                          },
+                          border: TableBorder.all(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
+                          children: [
+                            TableRow(
+                              decoration: BoxDecoration(color: Colors.grey.shade100),
+                              children: const [
+                                Padding(padding: EdgeInsets.all(8), child: Text('Alumno/a', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                                Padding(padding: EdgeInsets.all(8), child: Text('Entregadas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12), textAlign: TextAlign.center)),
+                                Padding(padding: EdgeInsets.all(8), child: Text('Nota Final', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12), textAlign: TextAlign.center)),
+                              ],
+                            ),
+                            ..._alumnos.map((al) {
+                              final res = _calcularResumenTareasClase(al.id);
+                              final total = res['total']!;
+                              final entregadas = res['entregadas']!;
+                              final pct = total > 0 ? (entregadas / total * 100).round() : 0;
+                              return TableRow(children: [
+                                Padding(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                  child: Text(al.nombre, style: const TextStyle(fontSize: 12))),
+                                Padding(padding: const EdgeInsets.all(6),
+                                  child: Text(total > 0 ? '$entregadas/$total ($pct%)' : 'Sin datos',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 12, fontWeight: FontWeight.w600,
+                                      color: total > 0 ? (pct >= 70 ? Colors.green.shade800 : Colors.orange.shade800) : Colors.grey,
+                                    ))),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                  child: TextField(
+                                    controller: ctrlsTarea[al.id],
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    textAlign: TextAlign.center,
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      hintText: '1-10',
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                    onChanged: (_) => setDlg(() {}),
+                                  ),
+                                ),
+                              ]);
+                            }),
+                          ],
+                        ),
+                      ],
+
+                      // ── Sección Conducta Diaria ──
+                      if (hayConducita) ...[
+                        const SizedBox(height: 24),
+                        Row(children: [
+                          Icon(Icons.sentiment_satisfied_alt_rounded, color: Colors.deepPurple.shade600, size: 18),
+                          const SizedBox(width: 6),
+                          Text('Conducta Diaria',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.deepPurple.shade800)),
+                        ]),
+                        const SizedBox(height: 8),
+                        Table(
+                          columnWidths: const {
+                            0: FlexColumnWidth(3),
+                            1: FixedColumnWidth(130),
+                            2: FixedColumnWidth(110),
+                          },
+                          border: TableBorder.all(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
+                          children: [
+                            TableRow(
+                              decoration: BoxDecoration(color: Colors.grey.shade100),
+                              children: const [
+                                Padding(padding: EdgeInsets.all(8), child: Text('Alumno/a', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                                Padding(padding: EdgeInsets.all(8), child: Text('Prom. registrado', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12), textAlign: TextAlign.center)),
+                                Padding(padding: EdgeInsets.all(8), child: Text('Nota Final', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12), textAlign: TextAlign.center)),
+                              ],
+                            ),
+                            ..._alumnos.map((al) {
+                              final prom = _calcularPromedioConducita(al.id);
+                              return TableRow(children: [
+                                Padding(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                  child: Text(al.nombre, style: const TextStyle(fontSize: 12))),
+                                Padding(padding: const EdgeInsets.all(6),
+                                  child: Text(
+                                    prom != null ? prom.toStringAsFixed(1) : 'Sin datos',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 12, fontWeight: FontWeight.w600,
+                                      color: prom != null
+                                        ? (prom >= 7.0 ? Colors.green.shade800 : (prom >= 5.0 ? Colors.orange.shade800 : Colors.red.shade800))
+                                        : Colors.grey,
+                                    ),
+                                  )),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                  child: TextField(
+                                    controller: ctrlsConducita[al.id],
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    textAlign: TextAlign.center,
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      hintText: '1-10',
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                    onChanged: (_) => setDlg(() {}),
+                                  ),
+                                ),
+                              ]);
+                            }),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    for (final c in ctrlsTarea.values) { c.dispose(); }
+                    for (final c in ctrlsConducita.values) { c.dispose(); }
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.save_rounded),
+                  label: const Text('Guardar Notas de Cierre'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal.shade700,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () async {
+                    // Validar al menos una nota ingresada en cualquier sección
+                    final tieneNotasTarea = ctrlsTarea.values.any((c) => c.text.trim().isNotEmpty);
+                    final tieneNotasConducita = ctrlsConducita.values.any((c) => c.text.trim().isNotEmpty);
+                    if (!tieneNotasTarea && !tieneNotasConducita) {
+                      ScaffoldMessenger.of(ctx2).showSnackBar(
+                        const SnackBar(content: Text('Ingresá al menos una nota para continuar.')),
+                      );
+                      return;
+                    }
+
+                    // Capturar valores antes de dispose
+                    final notasTarea = <String, double>{};
+                    for (final al in _alumnos) {
+                      final texto = ctrlsTarea[al.id]?.text.trim() ?? '';
+                      if (texto.isEmpty) continue;
+                      final nota = double.tryParse(texto.replaceAll(',', '.'));
+                      if (nota != null && nota >= 1.0 && nota <= 10.0) notasTarea[al.id] = nota;
+                    }
+                    final notasConducita = <String, double>{};
+                    for (final al in _alumnos) {
+                      final texto = ctrlsConducita[al.id]?.text.trim() ?? '';
+                      if (texto.isEmpty) continue;
+                      final nota = double.tryParse(texto.replaceAll(',', '.'));
+                      if (nota != null && nota >= 1.0 && nota <= 10.0) notasConducita[al.id] = nota;
+                    }
+
+                    for (final c in ctrlsTarea.values) { c.dispose(); }
+                    for (final c in ctrlsConducita.values) { c.dispose(); }
+                    Navigator.pop(ctx);
+
+                    setState(() => _isSaving = true);
+                    int totalGuardadas = 0;
+                    try {
+                      // ── Guardar cierre Tareas/Clase ──
+                      if (notasTarea.isNotEmpty) {
+                        final actTarea = await _supabaseService.crearActividad(
+                          materiaId: _selectedMateriaId!,
+                          categoriaId: null,
+                          titulo: 'Nota Final Tareas/Clase',
+                          fecha: DateTime.now(),
+                          tipoActividad: 'NOTA',
+                        );
+                        final actTareaId = actTarea['id'] as String;
+                        for (final entry in notasTarea.entries) {
+                          await _supabaseService.upsertCalificacion(
+                            actividadId: actTareaId,
+                            alumnoId: entry.key,
+                            notaNumerica: entry.value,
+                          );
+                          totalGuardadas++;
+                        }
+                      }
+
+                      // ── Guardar cierre Conducta ──
+                      if (notasConducita.isNotEmpty) {
+                        final actConducita = await _supabaseService.crearActividad(
+                          materiaId: _selectedMateriaId!,
+                          categoriaId: null,
+                          titulo: 'Nota Final Conducta',
+                          fecha: DateTime.now(),
+                          tipoActividad: 'NOTA',
+                        );
+                        final actConducitaId = actConducita['id'] as String;
+                        for (final entry in notasConducita.entries) {
+                          await _supabaseService.upsertCalificacion(
+                            actividadId: actConducitaId,
+                            alumnoId: entry.key,
+                            notaNumerica: entry.value,
+                          );
+                          totalGuardadas++;
+                        }
+                      }
+
+                      await _cargarPlanillaMateria();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('✅ Cierre guardado: $totalGuardadas notas cargadas en la planilla.'),
+                            backgroundColor: Colors.teal.shade700,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      _mostrarError('Error al guardar el cierre: $e');
+                    } finally {
+                      if (mounted) setState(() => _isSaving = false);
+                    }
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _mostrarError(String mensaje) {
@@ -936,19 +1264,31 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
     );
   }
 
-  double? _calcularPromedioTareas(String alumnoId) {
+  /// Cuenta cuántas tareas/actividades en clase entregó el alumno
+  /// Retorna: {'total': N, 'entregadas': N, 'noEntregadas': N}
+  Map<String, int> _calcularResumenTareasClase(String alumnoId) {
     final studentGrades = _grades[alumnoId] ?? {};
-    final tareas = _actividades.where((a) => a['titulo'].toString().startsWith('[TAREA]')).toList();
-    if (tareas.isEmpty) return null;
+    final actsTareaClase = _actividades.where((a) {
+      final t = a['titulo'].toString();
+      return t.startsWith('[TAREA]') || t.startsWith('[CLASE]');
+    }).toList();
 
-    List<double> notas = [];
-    for (final t in tareas) {
-      final actId = t['id'];
-      final n = studentGrades[actId];
-      if (n != null) notas.add(n);
+    int total = actsTareaClase.length;
+    int entregadas = 0;
+    int noEntregadas = 0;
+
+    for (final act in actsTareaClase) {
+      final nota = studentGrades[act['id']];
+      if (nota != null) {
+        // >= 9.0 = SÍ entregó, cualquier nota > 0 es "entregó"
+        if (nota >= 6.0) {
+          entregadas++;
+        } else {
+          noEntregadas++;
+        }
+      }
     }
-    if (notas.isEmpty) return null;
-    return notas.reduce((a, b) => a + b) / notas.length;
+    return {'total': total, 'entregadas': entregadas, 'noEntregadas': noEntregadas};
   }
 
   void _generarNotaSeguimientoInforme() async {
@@ -985,18 +1325,14 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
       if (confirm != true) return;
 
-      if (_categorias.isEmpty) {
-        _mostrarError('No hay categorías configuradas para esta materia.');
-        return;
-      }
-
       setState(() => _isLoading = true);
       try {
         await _supabaseService.crearActividad(
           materiaId: _selectedMateriaId!,
-          categoriaId: _categorias.first['id'] as String,
+          categoriaId: _categorias.isNotEmpty ? _categorias.first['id'] as String : null,
           titulo: '[INFO] Seguimiento del Proceso',
           fecha: DateTime.now(),
+          tipoActividad: 'INFO',
         );
         await _cargarPlanillaMateria();
       } catch (e) {
@@ -1733,6 +2069,22 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                   onPressed: _generarNotaSeguimientoInforme,
                 ),
                 const SizedBox(width: 8),
+                // Botón de cierre cuatrimestral (tareas, clase y/o conducta)
+                if (_actividades.any((a) {
+                  final t = a['titulo'].toString();
+                  return t.startsWith('[TAREA]') || t.startsWith('[CLASE]') || t.startsWith('[CONDUCTA]');
+                }))
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.task_alt_rounded, size: 18),
+                    label: const Text('Cierre Cuatrimestral', style: TextStyle(fontWeight: FontWeight.w600)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                    ),
+                    onPressed: _abrirCierreTareasClase,
+                  ),
+                const SizedBox(width: 8),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.print_outlined, size: 18),
                   label: const Text('Planilla Materia', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -2021,20 +2373,29 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                         final rawTitulo = act['titulo'].toString();
                                         final esInfo = rawTitulo.startsWith('[INFO]');
                                         final esTarea = rawTitulo.startsWith('[TAREA]');
+                                        final esClase = rawTitulo.startsWith('[CLASE]');
                                         final esConducta = rawTitulo.startsWith('[CONDUCTA]');
-                                        final cleanTitulo = rawTitulo.replaceAll('[INFO] ', '').replaceAll('[INFO]', '').replaceAll('[TAREA] ', '').replaceAll('[TAREA]', '').replaceAll('[CONDUCTA] ', '').replaceAll('[CONDUCTA]', '').trim();
+                                        final cleanTitulo = rawTitulo
+                                            .replaceAll('[INFO] ', '').replaceAll('[INFO]', '')
+                                            .replaceAll('[TAREA] ', '').replaceAll('[TAREA]', '')
+                                            .replaceAll('[CLASE] ', '').replaceAll('[CLASE]', '')
+                                            .replaceAll('[CONDUCTA] ', '').replaceAll('[CONDUCTA]', '')
+                                            .trim();
 
                                         Color headerColor = catColor;
-                                        String subTexto = catName;
+                                        String subTexto = catName.isNotEmpty ? catName : 'Sin categoría';
                                         if (esInfo) {
                                           headerColor = Colors.purple.shade700;
                                           subTexto = 'INFORME (No promedia)';
                                         } else if (esTarea) {
                                           headerColor = Colors.green.shade700;
-                                          subTexto = 'TAREA (Evidencias 60%)';
+                                          subTexto = 'TAREA (Entrega Sí/No)';
+                                        } else if (esClase) {
+                                          headerColor = Colors.teal.shade700;
+                                          subTexto = 'CLASE (Actividad Sí/No)';
                                         } else if (esConducta) {
                                           headerColor = Colors.amber.shade900;
-                                          subTexto = 'CONDUCTA DIARIA (No promedia RITE)';
+                                          subTexto = 'CONDUCTA (No promedia)';
                                         }
 
                                         return DataColumn(
@@ -2087,8 +2448,9 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                                     children: [
                                                       if (esInfo) const Icon(Icons.info_outline, size: 14, color: Colors.purple),
                                                       if (esTarea) const Icon(Icons.check_box, size: 14, color: Colors.green),
+                                                      if (esClase) Icon(Icons.emoji_people_rounded, size: 14, color: Colors.teal.shade700),
                                                       if (esConducta) Icon(Icons.psychology_alt_outlined, size: 14, color: Colors.amber.shade900),
-                                                      if (esInfo || esTarea || esConducta) const SizedBox(width: 4),
+                                                      if (esInfo || esTarea || esClase || esConducta) const SizedBox(width: 4),
                                                       Flexible(
                                                         child: Text(
                                                           cleanTitulo,
@@ -2110,13 +2472,16 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                           ), // SizedBox width:100
                                         );
                                       }),
-                                      if (_actividades.any((act) => act['titulo'].toString().startsWith('[TAREA]')))
+                                      if (_actividades.any((act) {
+                                        final t = act['titulo'].toString();
+                                        return t.startsWith('[TAREA]') || t.startsWith('[CLASE]');
+                                      }))
                                         DataColumn(
                                           label: Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
                                             decoration: BoxDecoration(
-                                              color: Colors.green.withAlpha(30),
-                                              border: Border.all(color: Colors.green),
+                                              color: Colors.teal.withAlpha(30),
+                                              border: Border.all(color: Colors.teal),
                                               borderRadius: BorderRadius.circular(8),
                                             ),
                                             child: const Column(
@@ -2126,12 +2491,12 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                                 Row(
                                                   mainAxisSize: MainAxisSize.min,
                                                   children: [
-                                                    Icon(Icons.analytics_outlined, size: 14, color: Colors.green),
+                                                    Icon(Icons.task_alt_rounded, size: 14, color: Colors.teal),
                                                     SizedBox(width: 4),
-                                                    Text('Prom. Tareas', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                                                    Text('Tareas/Clase', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
                                                   ],
                                                 ),
-                                                Text('Evidencias (60%)', style: TextStyle(fontSize: 10, color: Colors.green)),
+                                                Text('Entregadas / Total', style: TextStyle(fontSize: 10, color: Colors.teal)),
                                               ],
                                             ),
                                           ),
@@ -2172,9 +2537,10 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                             final focusNode = _focusNodes[key];
                                             final rawTitulo = act['titulo'].toString();
                                             final esTarea = rawTitulo.startsWith('[TAREA]');
+                                            final esClaseCelda = rawTitulo.startsWith('[CLASE]');
                                             final double? notaActual = _grades[alumno.id]?[act['id']];
-                                            
-                                            if (esTarea) {
+
+                                            if (esTarea || esClaseCelda) {
                                               Color chipColor = Colors.grey.shade200;
                                               Color textColor = Colors.black87;
                                               String chipText = '---';
@@ -2310,22 +2676,29 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                               ),
                                             );
                                           }),
-                                          if (_actividades.any((act) => act['titulo'].toString().startsWith('[TAREA]'))) ...[
+                                          if (_actividades.any((act) {
+                                            final t = act['titulo'].toString();
+                                            return t.startsWith('[TAREA]') || t.startsWith('[CLASE]');
+                                          })) ...[
                                             (() {
-                                              final promTareas = _calcularPromedioTareas(alumno.id);
+                                              final resumen = _calcularResumenTareasClase(alumno.id);
+                                              final tieneDatos = resumen['entregadas']! > 0 || resumen['noEntregadas']! > 0;
+                                              final texto = tieneDatos
+                                                  ? '${resumen['entregadas']}/${resumen['total']}'
+                                                  : '-';
                                               return DataCell(
                                                 Container(
                                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                                   decoration: BoxDecoration(
-                                                    color: promTareas != null ? Colors.green.shade50 : Colors.grey.shade100,
+                                                    color: tieneDatos ? Colors.teal.shade50 : Colors.grey.shade100,
                                                     borderRadius: BorderRadius.circular(8),
-                                                    border: Border.all(color: promTareas != null ? Colors.green.shade300 : Colors.grey.shade300),
+                                                    border: Border.all(color: tieneDatos ? Colors.teal.shade300 : Colors.grey.shade300),
                                                   ),
                                                   child: Text(
-                                                    promTareas != null ? promTareas.toStringAsFixed(1) : '-',
+                                                    texto,
                                                     style: TextStyle(
                                                       fontWeight: FontWeight.bold,
-                                                      color: promTareas != null ? Colors.green.shade800 : Colors.grey.shade600,
+                                                      color: tieneDatos ? Colors.teal.shade800 : Colors.grey.shade600,
                                                     ),
                                                   ),
                                                 ),
@@ -2407,8 +2780,9 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
       return null;
     }
 
-    // Modo B (default): promedio por categoría ponderado por el peso de la categoría
-    final Map<String, List<double>> notasPorCategoria = {};
+    // Modo B (default): promedio por categoría si hay categorías; promedio simple si no.
+    // TAREA y CLASE NO se incluyen — se cierran aparte.
+    final Map<String?, List<double>> notasPorCategoria = {};
     for (final entry in studentGrades.entries) {
       final actId = entry.key;
       final nota = entry.value;
@@ -2416,30 +2790,39 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
       final act = _actividades.firstWhere((a) => a['id'] == actId, orElse: () => <String, dynamic>{});
       if (act.isNotEmpty) {
         final rawTitulo = act['titulo']?.toString() ?? '';
-        if (rawTitulo.startsWith('[INFO]') || rawTitulo.startsWith('[CONDUCTA]')) continue;
-        final catId = act['categoria_id'];
+        // Excluir columnas de seguimiento / no-nota
+        if (rawTitulo.startsWith('[INFO]') || rawTitulo.startsWith('[CONDUCTA]') ||
+            rawTitulo.startsWith('[TAREA]') || rawTitulo.startsWith('[CLASE]')) continue;
+        final catId = act['categoria_id'] as String?;
         notasPorCategoria.putIfAbsent(catId, () => []).add(nota);
       }
     }
 
     if (notasPorCategoria.isEmpty) return null;
 
-    double totalPonderado = 0.0;
-    double totalPeso = 0.0;
+    // Si hay categorías configuradas, usarlas para ponderar
+    if (_categorias.isNotEmpty) {
+      double totalPonderado = 0.0;
+      double totalPeso = 0.0;
 
-    for (final cat in _categorias) {
-      final catId = cat['id'];
-      final peso = (cat['peso_porcentaje'] as num).toDouble();
-      final notas = notasPorCategoria[catId];
-      if (notas != null && notas.isNotEmpty) {
-        final promedioCat = notas.reduce((a, b) => a + b) / notas.length;
-        totalPonderado += promedioCat * peso;
-        totalPeso += peso;
+      for (final cat in _categorias) {
+        final catId = cat['id'] as String?;
+        final peso = (cat['peso_porcentaje'] as num).toDouble();
+        final notas = notasPorCategoria[catId];
+        if (notas != null && notas.isNotEmpty) {
+          final promedioCat = notas.reduce((a, b) => a + b) / notas.length;
+          totalPonderado += promedioCat * peso;
+          totalPeso += peso;
+        }
       }
+
+      if (totalPeso > 0.0) return totalPonderado / totalPeso;
     }
 
-    if (totalPeso == 0.0) return null;
-    return totalPonderado / totalPeso;
+    // Fallback: promedio simple de todas las notas (sin categorías o sin match)
+    final todasLasNotas = notasPorCategoria.values.expand((v) => v).toList();
+    if (todasLasNotas.isEmpty) return null;
+    return todasLasNotas.reduce((a, b) => a + b) / todasLasNotas.length;
   }
 
   // ─── Helpers para boletín cualitativo ───────────────────────────────────
