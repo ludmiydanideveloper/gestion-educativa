@@ -147,12 +147,14 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
 
   void _abrirFormNuevoEvento(DateTime fecha) {
     String tipoSeleccionado = 'EVALUACION';
-    String? cursoSeleccionadoId = widget.cursoIdInicial ?? 
+    String? cursoSeleccionadoId = widget.cursoIdInicial ??
         (_cursos.isNotEmpty ? _cursos.first['curso_id'] as String : null);
     final tituloCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     bool guardando = false;
     bool esInterno = false;
+    bool notificarPadres = false;
+    bool notificarDocentes = false;
 
     showModalBottomSheet(
       context: context,
@@ -179,13 +181,41 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                 // Visibilidad / Público
                 SwitchListTile(
                   title: const Text('Exclusivo Personal (Interno)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.indigo)),
-                  subtitle: const Text('Si se activa, no aparecerá en el portal de padres ni alumnos (ej: Reunión de Profes)', style: TextStyle(fontSize: 11)),
+                  subtitle: const Text('Si se activa, no aparecerá en el portal de padres ni alumnos', style: TextStyle(fontSize: 11)),
                   value: esInterno,
                   activeColor: Colors.indigo,
                   contentPadding: EdgeInsets.zero,
                   onChanged: (val) => setS(() => esInterno = val),
                 ),
-                const SizedBox(height: 12),
+                const Divider(height: 16),
+                // ── Notificaciones ────────────────────────────────────
+                const Text('Notificar a', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SwitchListTile(
+                        title: const Text('Padres / Tutores', style: TextStyle(fontSize: 12)),
+                        value: notificarPadres,
+                        activeColor: Colors.teal,
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        onChanged: esInterno ? null : (val) => setS(() => notificarPadres = val),
+                      ),
+                    ),
+                    Expanded(
+                      child: SwitchListTile(
+                        title: const Text('Docentes', style: TextStyle(fontSize: 12)),
+                        value: notificarDocentes,
+                        activeColor: Colors.deepPurple,
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        onChanged: (val) => setS(() => notificarDocentes = val),
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 16),
 
                 // Selector de tipo
                 const Text('Tipo de evento',
@@ -272,6 +302,8 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                                 tipoEvento: tipoSeleccionado,
                                 cursoId: cursoSeleccionadoId,
                                 esInterno: esInterno,
+                                notificarPadres: notificarPadres,
+                                notificarDocentes: notificarDocentes,
                               );
                               if (ctx.mounted) Navigator.of(ctx).pop();
                               await _cargarTodo();
@@ -367,7 +399,7 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
     final rol = user?.userMetadata?['rol'] as String? ?? 'DOCENTE';
     final puedeAgregar = rol == 'ADMIN' || rol == 'PRECEPTOR';
 
-    return Column(
+    final calendarContent = Column(
       children: [
         // ── Navegación de mes ────────────────────────────────────────
         Container(
@@ -448,7 +480,8 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                   gridDelegate:
                       const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 7,
-                    childAspectRatio: 1.0,
+                    childAspectRatio: 1.4,
+                    mainAxisSpacing: 2,
                   ),
                   itemCount: offsetInicio + diasEnMes,
                   itemBuilder: (context, index) {
@@ -654,5 +687,30 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
         ),
       ],
     );
+
+    // Si hay ModalRoute activa (se navegó aquí como página), envolvemos en Scaffold
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(
+            widget.cursNombreInicial != null
+                ? 'Calendario — ${widget.cursNombreInicial}'
+                : 'Calendario',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded),
+              tooltip: 'Actualizar',
+              onPressed: _cargarTodo,
+            ),
+          ],
+        ),
+        body: calendarContent,
+      );
+    }
+
+    return calendarContent;
   }
 }

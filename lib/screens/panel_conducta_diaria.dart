@@ -91,22 +91,20 @@ class _PanelConductaDiariaState extends State<PanelConductaDiaria> {
     int errores = 0;
     for (final a in alumnos) {
       if (a.alumnoId.isEmpty) continue;
-      if (a.estado != _EstadoConducta.bien || a.observacion.isNotEmpty) {
-        try {
-          await _service.registrarIncidencia(
-            alumnoId: a.alumnoId,
-            tipoIncidencia: a.observacion.isNotEmpty
-                ? a.observacion
-                : _labelEstado(a.estado),
-            severidad: a.estado == _EstadoConducta.mal
-                ? 'MODERADA'
-                : 'LEVE',
-            descripcion:
-                'Conducta diaria: ${_labelEstado(a.estado)}${a.observacion.isNotEmpty ? ' — ${a.observacion}' : ''}',
-          );
-        } catch (_) {
-          errores++;
-        }
+      // Guardar SIEMPRE — incluso los alumnos "Bien" — para que el resumen
+      // mensual tenga datos de cada día en que se tomó conducta.
+      try {
+        await _service.registrarIncidencia(
+          alumnoId: a.alumnoId,
+          tipoIncidencia: _labelEstado(a.estado),
+          severidad: a.estado == _EstadoConducta.mal
+              ? 'MODERADA'
+              : 'LEVE',
+          descripcion:
+              'Conducta diaria: ${_labelEstado(a.estado)}${a.observacion.isNotEmpty ? ' — ${a.observacion}' : ''}',
+        );
+      } catch (_) {
+        errores++;
       }
     }
     if (mounted) {

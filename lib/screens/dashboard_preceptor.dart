@@ -56,14 +56,8 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
   @override
   void initState() {
     super.initState();
-    _customCalendarEvents = {
-      12: {'title': 'Reunión de Gabinete Psicopedagógico (EOE) - 10:00 hs', 'category': 'Reuniones'},
-      15: {'title': 'Examen Trimestral de Matemática (1ro A) - 08:30 hs', 'category': 'Evaluaciones'},
-      22: {'title': 'Entrega de TP de Ciencias Naturales (2do B) - 13:00 hs', 'category': 'Evaluaciones'},
-      18: {'title': 'Acto del Día de la Independencia - 09:30 hs', 'category': 'Actos'},
-      25: {'title': 'Capacitación Docente (RITE) - 14:00 hs', 'category': 'Capacitaciones'},
-      28: {'title': 'Presentación de Proyectos de Ciencias - 11:00 hs', 'category': 'Proyectos'},
-    };
+    // Iniciar vacío — los eventos reales vienen de Supabase en _cargarEventosDesdeSupabase()
+    _customCalendarEvents = {};
     final user = Supabase.instance.client.auth.currentUser;
     final rol = user?.userMetadata?['rol'] as String?;
 

@@ -174,6 +174,16 @@ class _PanelBancoEvaluacionesState extends State<PanelBancoEvaluaciones> {
 
               try {
                 await Supabase.instance.client.from('banco_evaluaciones').insert(nuevo);
+                // Notificar a admins cuando un docente sube una evaluación para aprobación
+                if (!_esAdmin) {
+                  _service.obtenerAuthIdsAdministracion().then((adminIds) {
+                    _service.notificarSistema(
+                      asunto: '📋 Evaluación pendiente de aprobación: ${tituloCtrl.text.trim()}',
+                      texto: '$nombreDocente subió la evaluación "${tituloCtrl.text.trim()}" (${widget.nombreAsignatura}) para su revisión y aprobación.',
+                      destinatariosAuthIds: adminIds,
+                    );
+                  });
+                }
               } catch (_) {
                 // Si la tabla aún no existe en DB, guardamos en memoria y mostramos aviso
               }
@@ -186,7 +196,7 @@ class _PanelBancoEvaluacionesState extends State<PanelBancoEvaluaciones> {
                   SnackBar(
                     content: Text(_esAdmin
                         ? '✅ Evaluación agregada y APROBADA en el banco institucional.'
-                        : '📤 Evaluación enviada a revisión. El Administrador deberá aprobarla antes de publicarse en el banco general.'),
+                        : '📤 Evaluación enviada a revisión. El Administrador recibirá una notificación para aprobarla.'),
                     backgroundColor: _esAdmin ? Colors.green : Colors.blue,
                   ),
                 );

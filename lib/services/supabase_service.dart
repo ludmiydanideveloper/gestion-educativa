@@ -1254,7 +1254,7 @@ class SupabaseService {
     }
   }
 
-  /// Crea un nuevo evento de calendario. Disparará el trigger de notificación.
+  /// Crea un nuevo evento de calendario y envía notificaciones opcionales.
   Future<void> crearEventoCalendario({
     required String titulo,
     required String descripcion,
@@ -1262,6 +1262,8 @@ class SupabaseService {
     required String tipoEvento,
     String? cursoId,
     bool esInterno = false,
+    bool notificarPadres = false,
+    bool notificarDocentes = false,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) throw Exception('Usuario no autenticado');
@@ -1291,6 +1293,80 @@ class SupabaseService {
         'curso_id': (cursoId != null && cursoId.isNotEmpty) ? cursoId : null,
       });
     }
+
+    // ── Notificaciones ───────────────────────────────────────────────
+    final asunto = 'Nuevo evento escolar: $titulo ($fecha)';
+    final texto = 'Se agendó "$titulo" para el $fecha.${descripcion.isNotEmpty ? " $descripcion" : ""}';
+
+    // Siempre notificar a Administración
+    obtenerAuthIdsAdministracion().then((adminIds) {
+      notificarSistema(asunto: asunto, texto: texto, destinatariosAuthIds: adminIds);
+    });
+
+    if (notificarPadres || notificarDocentes) {
+      obtenerAuthIdsEventoDestinatarios(cursoId: cursoId, incluirPadres: notificarPadres, incluirDocentes: notificarDocentes).then((ids) {
+        if (ids.isNotEmpty) {
+          notificarSistema(asunto: asunto, texto: texto, destinatariosAuthIds: ids);
+        }
+      });
+    }
+  }
+
+  /// Obtiene auth_ids de padres y/o docentes para notificar eventos de calendario.
+  Future<List<String>> obtenerAuthIdsEventoDestinatarios({
+    String? cursoId,
+    bool incluirPadres = false,
+    bool incluirDocentes = false,
+  }) async {
+    final Set<String> ids = {};
+    try {
+      if (incluirPadres) {
+        if (cursoId != null && cursoId.isNotEmpty) {
+          // Padres de alumnos inscriptos en el curso
+          final inscs = await _client
+              .from('acad_inscripciones')
+              .select('alumno_id, usr_legajo_alumno(auth_id, grupo_id)')
+              .eq('curso_id', cursoId);
+          for (final ins in inscs) {
+            final alumno = ins['usr_legajo_alumno'] as Map<String, dynamic>?;
+            if (alumno == null) continue;
+            final grupoId = alumno['grupo_id'] as String?;
+            if (grupoId != null) {
+              final padres = await _client
+                  .from('usr_legajo_alumno')
+                  .select('auth_id')
+                  .eq('grupo_id', grupoId)
+                  .eq('rol_financiero', 'RESPONSABLE_PAGO');
+              for (final p in padres) {
+                final id = p['auth_id'] as String?;
+                if (id != null && id.isNotEmpty) ids.add(id);
+              }
+            }
+          }
+        } else {
+          // Todos los padres de la escuela
+          final todos = await _client
+              .from('usr_legajo_alumno')
+              .select('auth_id')
+              .eq('rol_financiero', 'RESPONSABLE_PAGO');
+          for (final p in todos) {
+            final id = p['auth_id'] as String?;
+            if (id != null && id.isNotEmpty) ids.add(id);
+          }
+        }
+      }
+
+      if (incluirDocentes) {
+        final docentes = await _client.from('usr_docentes').select('auth_id');
+        for (final d in docentes) {
+          final id = d['auth_id'] as String?;
+          if (id != null && id.isNotEmpty) ids.add(id);
+        }
+      }
+    } catch (e) {
+      print('Error al obtener destinatarios de evento: $e');
+    }
+    return ids.toList();
   }
 
   /// Obtiene la lista de docentes y directivos disponibles para que un tutor inicie una conversación
