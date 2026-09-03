@@ -145,35 +145,89 @@ class PanelGestionMateria extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.orange.shade200)),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.quiz_rounded, size: 16, color: Colors.purple),
-                              SizedBox(width: 6),
-                              Text('15/07 - Examen Trimestral', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.orange.shade200)),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.assignment_rounded, size: 16, color: Colors.blue),
-                              SizedBox(width: 6),
-                              Text('22/07 - Entrega TP Integrador', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                            ],
-                          ),
-                        ),
-                      ],
+                    // Fechas reales desde acad_calendario. Antes eran dos chips
+                    // fijos ("15/07 - Examen Trimestral" y "22/07 - Entrega TP
+                    // Integrador") escritos a mano, que se mostraban siempre
+                    // aunque no hubiera nada agendado.
+                    FutureBuilder<List<Map<String, dynamic>>>(
+                      future: SupabaseService()
+                          .obtenerCalendarioPorCurso(cursoId, soloPublicos: false),
+                      builder: (context, snap) {
+                        if (snap.connectionState == ConnectionState.waiting) {
+                          return const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          );
+                        }
+
+                        final hoy = DateTime.now();
+                        final desde = DateTime(hoy.year, hoy.month, hoy.day);
+                        final proximos = (snap.data ?? []).where((e) {
+                          final f = DateTime.tryParse(
+                              (e['fecha'] ?? '').toString());
+                          return f != null && !f.isBefore(desde);
+                        }).toList()
+                          ..sort((a, b) => (a['fecha'] ?? '')
+                              .toString()
+                              .compareTo((b['fecha'] ?? '').toString()));
+
+                        if (proximos.isEmpty) {
+                          return Text(
+                            'No hay fechas agendadas. Tocá "Ver Calendario Completo" para cargar una.',
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                color: Colors.deepOrange.shade700),
+                          );
+                        }
+
+                        return Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: proximos.take(4).map((e) {
+                            final f = DateTime.parse(e['fecha'].toString());
+                            final tipo = (e['tipo_evento'] ?? '')
+                                .toString()
+                                .toUpperCase();
+                            final icono = tipo == 'EVALUACION'
+                                ? Icons.quiz_rounded
+                                : tipo == 'REUNION'
+                                    ? Icons.people_rounded
+                                    : Icons.assignment_rounded;
+                            final color = tipo == 'EVALUACION'
+                                ? Colors.purple
+                                : tipo == 'REUNION'
+                                    ? Colors.green
+                                    : Colors.blue;
+                            final dd = f.day.toString().padLeft(2, '0');
+                            final mm = f.month.toString().padLeft(2, '0');
+
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                border:
+                                    Border.all(color: Colors.orange.shade200),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(icono, size: 16, color: color),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '$dd/$mm - ${e['titulo'] ?? 'Evento'}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        );
+                      },
                     ),
                   ],
                 ),

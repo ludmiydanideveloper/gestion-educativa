@@ -1314,32 +1314,102 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
               borderRadius: BorderRadius.circular(16),
               side: BorderSide(color: colorScheme.outlineVariant.withAlpha(80)),
             ),
-            child: ListView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                ListTile(
-                  leading: const CircleAvatar(backgroundColor: Color(0xFFFDE8E8), child: Icon(Icons.warning_amber_rounded, color: Colors.red)),
-                  title: const Text('Examen Trimestral de Matemática (1ro A)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  subtitle: const Text('Fecha: 15/07/2026 | Docente: Florencia Viero'),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
-                    child: const Text('Urgente', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 10)),
-                  ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const CircleAvatar(backgroundColor: Color(0xFFFFF4E5), child: Icon(Icons.event_note_rounded, color: Colors.orange)),
-                  title: const Text('Entrega de Trabajo Práctico de Ciencias Naturales (2do B)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  subtitle: const Text('Fecha: 22/07/2026 | Docente: Danilo Gomez'),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8)),
-                    child: const Text('Próximo', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 10)),
-                  ),
-                ),
-              ],
+            // Próximas evaluaciones reales desde acad_calendario. Antes eran
+            // dos ListTile fijos ("Examen Trimestral de Matemática 15/07/2026"
+            // y "Entrega de TP de Ciencias 22/07/2026") escritos a mano.
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _supabaseService.obtenerTodosLosEventosCalendario(),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(
+                      child: SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  );
+                }
+
+                final hoy = DateTime.now();
+                final desde = DateTime(hoy.year, hoy.month, hoy.day);
+                final proximos = (snap.data ?? []).where((e) {
+                  final f = DateTime.tryParse((e['fecha'] ?? '').toString());
+                  return f != null && !f.isBefore(desde);
+                }).toList()
+                  ..sort((a, b) => (a['fecha'] ?? '')
+                      .toString()
+                      .compareTo((b['fecha'] ?? '').toString()));
+
+                if (proximos.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text(
+                      'No hay evaluaciones ni entregas agendadas.',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                  );
+                }
+
+                final visibles = proximos.take(4).toList();
+                return ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: visibles.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final e = visibles[i];
+                    final f = DateTime.parse(e['fecha'].toString());
+                    final diasFaltan = f.difference(desde).inDays;
+                    final urgente = diasFaltan <= 3;
+                    final dd = f.day.toString().padLeft(2, '0');
+                    final mm = f.month.toString().padLeft(2, '0');
+
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: urgente
+                            ? const Color(0xFFFDE8E8)
+                            : const Color(0xFFFFF4E5),
+                        child: Icon(
+                          urgente
+                              ? Icons.warning_amber_rounded
+                              : Icons.event_note_rounded,
+                          color: urgente ? Colors.red : Colors.orange,
+                        ),
+                      ),
+                      title: Text(
+                        (e['titulo'] ?? 'Evento').toString(),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      subtitle: Text(
+                        'Fecha: $dd/$mm/${f.year}'
+                        '${diasFaltan == 0 ? " | Hoy" : diasFaltan == 1 ? " | Mañana" : " | En $diasFaltan días"}',
+                      ),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: urgente
+                              ? Colors.red.shade50
+                              : Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          urgente ? 'Urgente' : 'Próximo',
+                          style: TextStyle(
+                            color: urgente ? Colors.red : Colors.orange,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
           ),
         ],

@@ -448,8 +448,16 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
           ),
         ),
 
-        // ── Días de la semana ────────────────────────────────────────
-        Padding(
+        // ── Días de la semana + grid ─────────────────────────────────
+        // Ancho acotado: sin esto, en pantalla ancha las celdas quedaban de
+        // ~271px y el calendario se veía como una planilla estirada.
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 620),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(
             children: _diasSemana
@@ -477,10 +485,15 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                 child: GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
+                  // mainAxisExtent (alto fijo) en vez de childAspectRatio:
+                  // con ratio, en pantalla ancha las celdas se estiraban a
+                  // ~190px de alto y empujaban la lista de eventos fuera de
+                  // la tarjeta. Con alto fijo el grid mide igual en cualquier
+                  // ancho y siempre queda lugar para la lista.
                   gridDelegate:
                       const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 7,
-                    childAspectRatio: 1.4,
+                    mainAxisExtent: 46,
                     mainAxisSpacing: 2,
                   ),
                   itemCount: offsetInicio + diasEnMes,
@@ -568,6 +581,10 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                   },
                 ),
               ),
+              ],
+            ),
+          ),
+        ),
 
         const Divider(height: 1),
 
