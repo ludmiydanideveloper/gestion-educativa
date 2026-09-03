@@ -1334,14 +1334,14 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               <th colspan="15" class="th-group">CRITERIOS Y CALIFICACIÓN</th>
             </tr>
             <tr>
-              <th class="th-r"><span class="rot">Apropiación de los contenidos</span></th>
-              <th class="th-r"><span class="rot">Resolución de actividades</span></th>
+              <th class="th-r"><span class="rot">Apropiación de los contenidos trabajados</span></th>
+              <th class="th-r"><span class="rot">Resolución de actividades propuestas</span></th>
               <th class="th-r"><span class="rot">Participación en clases</span></th>
-              <th class="th-r"><span class="rot">Planteos y dudas</span></th>
+              <th class="th-r"><span class="rot">Planteos de dudas y sugerencias</span></th>
               <th class="th-r"><span class="rot">Entrega en tiempo y forma</span></th>
-              <th class="th-r"><span class="rot">Prolijidad y carpeta</span></th>
-              <th class="th-r"><span class="rot">Cumplimiento AIC*</span></th>
-              <th class="th-r"><span class="rot">TOTAL INASISTENCIAS</span></th>
+              <th class="th-r"><span class="rot">Prolijidad y carpeta completa</span></th>
+              <th class="th-r"><span class="rot">Cumplimiento de los AIC*</span></th>
+              <th class="th-r th-inas"><span class="rot">TOTAL INAS.</span></th>
               <th class="th-r"><span class="rot">RITE 1° ETAPA</span></th>
               <th class="th-r"><span class="rot">CALIFICACIÓN 1° ETAPA</span></th>
               <th class="th-r"><span class="rot">RITE 2° ETAPA</span></th>
@@ -1380,26 +1380,26 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               $colsExtraHeader
             </tr>
             <tr>
-              <th class="th-r th-grp-seg"><span class="rot">Apropiación</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">Resolución</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">Participación</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">Planteos</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">Entrega</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">Prolijidad</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">AIC*</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">INAS.</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">RITE</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">CAL.</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">Apropiación</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">Resolución</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">Participación</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">Planteos</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">Entrega</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">Prolijidad</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">AIC*</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">INAS.</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">RITE</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">CAL.</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">Apropiación de los contenidos trabajados</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">Resolución de actividades propuestas</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">Participación en clases</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">Planteos de dudas y sugerencias</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">Entrega en tiempo y forma</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">Prolijidad y carpeta completa</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">Cumplimiento de los AIC*</span></th>
+              <th class="th-r th-grp-seg th-inas"><span class="rot">INAS.</span></th>
+              <th class="th-r th-grp-seg th-cal"><span class="rot">RITE</span></th>
+              <th class="th-r th-grp-seg th-cal"><span class="rot">CAL.</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">Apropiación de los contenidos trabajados</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">Resolución de actividades propuestas</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">Participación en clases</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">Planteos de dudas y sugerencias</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">Entrega en tiempo y forma</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">Prolijidad y carpeta completa</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">Cumplimiento de los AIC*</span></th>
+              <th class="th-r th-grp-cie th-inas"><span class="rot">INAS.</span></th>
+              <th class="th-r th-grp-cie th-cal"><span class="rot">RITE</span></th>
+              <th class="th-r th-grp-cie th-cal"><span class="rot">CAL.</span></th>
               $colsExtraHeader2
             </tr>''';
           tablaFooter = '''
@@ -1518,9 +1518,10 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
             /* --- TABLA --- */
             .tbl {
-              width: 92%;
-              margin: 0 auto;
+              width: 100%;
+              margin: 0;
               border-collapse: collapse;
+              table-layout: fixed;
             }
             .tbl th, .tbl td { border: 1px solid #333; }
 
@@ -1528,22 +1529,27 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               background: #D9E1F2; font-weight: bold;
               text-align: center; vertical-align: middle;
               font-size: 10px; padding: 2px 3px;
-              width: 15%;
+              width: 13%;
             }
             .th-group {
               background: #D9E1F2; font-weight: bold;
               text-align: center; font-size: 10px; padding: 2px;
             }
+            /* criterio estándar */
             .th-r {
-              width: 4.5%; padding: 2px 1px;
+              width: 4.2%; padding: 2px 1px;
               vertical-align: middle; text-align: center;
               background: #fff;
             }
+            /* inasistencias: columna angosta */
+            .th-inas { width: 2.8% !important; }
+            /* RITE y CAL: un poco más anchos */
+            .th-cal  { width: 3.8% !important; }
             .th-grp-seg { background: #E8F4FD; }
             .th-grp-cie { background: #F0F7EC; }
             .rot {
               display: block;
-              font-size: 8px;
+              font-size: 7.5px;
               font-weight: bold;
               white-space: normal;
               word-break: break-word;
