@@ -4,9 +4,16 @@ set -e
 echo "=== 🚀 [Vercel Build] Iniciando configuración automática para Flutter Web ==="
 
 # 1. Instalar Flutter SDK en el entorno de build de Vercel si no está presente
+#
+# ⚠ VERSIÓN FIJA A PROPÓSITO. Antes decía "-b stable", que clona el stable del
+#   momento: cada deploy compilaba con un Flutter distinto y una release nueva
+#   podía romper producción sin que nadie tocara una línea de código.
+#   Para subir de versión, cambiá el número de acá y probá el deploy.
+FLUTTER_VERSION="3.38.10"
+
 if [ ! -d "flutter" ]; then
-  echo "📥 Clonando Flutter SDK (rama stable)..."
-  git clone https://github.com/flutter/flutter.git -b stable --depth 1 flutter
+  echo "📥 Clonando Flutter SDK $FLUTTER_VERSION..."
+  git clone https://github.com/flutter/flutter.git -b "$FLUTTER_VERSION" --depth 1 flutter
 fi
 
 # 2. Agregar Flutter al PATH temporal de Vercel

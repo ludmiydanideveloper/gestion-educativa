@@ -727,7 +727,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           const SizedBox(height: 8),
-          _buildInteractiveCalendar(colorScheme),
+          _buildCalendarioEmbebido(colorScheme),
           const SizedBox(height: 24),
 
           // 2. Banner Sala TICS (Turnera) - Finito/ListTile style
@@ -997,7 +997,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           const SizedBox(height: 8),
-          _buildInteractiveCalendar(colorScheme),
+          _buildCalendarioEmbebido(colorScheme),
           const SizedBox(height: 24),
 
           Text('Seleccioná un módulo para gestionar la institución:',
@@ -1158,7 +1158,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           const SizedBox(height: 8),
-          _buildInteractiveCalendar(colorScheme),
+          _buildCalendarioEmbebido(colorScheme),
           const SizedBox(height: 24),
 
           // Tarjetas de Acceso Principal (Listado Vertical Delgado)
@@ -1347,6 +1347,29 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
     );
   }
 
+  /// Calendario real embebido en el dashboard.
+  /// Reemplaza a _buildInteractiveCalendar(), que era una maqueta estática de
+  /// julio 2026: días fijos, título "Julio 2026" y los eventos nuevos se
+  /// guardaban siempre con fecha "2026-07-XX" sin importar el día real.
+  /// Usa el mismo CalendarioDocente que el menú lateral, así hay UN solo
+  /// calendario en toda la app. Necesita altura acotada porque termina en un
+  /// Expanded y acá lo contiene un SingleChildScrollView.
+  Widget _buildCalendarioEmbebido(ColorScheme colorScheme) {
+    return SizedBox(
+      height: 560,
+      child: Card(
+        elevation: 0,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: colorScheme.outlineVariant.withAlpha(80)),
+        ),
+        child: const CalendarioDocente(),
+      ),
+    );
+  }
+
+  // ignore: unused_element
   Widget _buildInteractiveCalendar(ColorScheme colorScheme) {
     final daysInMonth = 31;
     final startOffset = 2; // Julio 2026 starts on Wednesday (offset 2)
