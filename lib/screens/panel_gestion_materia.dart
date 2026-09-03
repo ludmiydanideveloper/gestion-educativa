@@ -396,6 +396,15 @@ class PanelGestionMateria extends StatelessWidget {
     final titleController = TextEditingController();
     DateTime? fechaSeleccionada;
     bool guardando = false;
+    String tipoSeleccionado = 'EVALUACION';
+
+    // Tipos de evento disponibles: valor DB → label + ícono
+    const tipos = [
+      {'valor': 'EVALUACION', 'label': 'Examen / Evaluación', 'icon': Icons.quiz_rounded},
+      {'valor': 'ENTREGA_TP', 'label': 'Entrega de TP', 'icon': Icons.assignment_turned_in_rounded},
+      {'valor': 'ACTIVIDAD',  'label': 'Actividad / Salida', 'icon': Icons.directions_walk_rounded},
+      {'valor': 'REUNION',    'label': 'Reunión', 'icon': Icons.groups_rounded},
+    ];
 
     final service = SupabaseService();
 
@@ -440,6 +449,28 @@ class PanelGestionMateria extends StatelessWidget {
                         'Agendá un examen o entrega de TP. Quedará visible en el Calendario General escolar.',
                         style: TextStyle(fontSize: 13, height: 1.4),
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Selector de tipo de evento
+                    const Text('Tipo de evento', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black54)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: tipos.map((t) {
+                        final val = t['valor'] as String;
+                        final lbl = t['label'] as String;
+                        final ico = t['icon'] as IconData;
+                        final sel = tipoSeleccionado == val;
+                        return ChoiceChip(
+                          avatar: Icon(ico, size: 16, color: sel ? Colors.white : Colors.deepOrange),
+                          label: Text(lbl, style: TextStyle(fontSize: 12, color: sel ? Colors.white : Colors.black87)),
+                          selected: sel,
+                          selectedColor: Colors.deepOrange,
+                          backgroundColor: Colors.deepOrange.shade50,
+                          onSelected: (_) => setDlg(() => tipoSeleccionado = val),
+                        );
+                      }).toList(),
                     ),
                     const SizedBox(height: 16),
                     TextField(
@@ -530,7 +561,7 @@ class PanelGestionMateria extends StatelessWidget {
                       titulo: titulo,
                       descripcion: '$nombreAsignatura — $identificadorDivision',
                       fecha: fechaStr,
-                      tipoEvento: 'EVALUACION',
+                      tipoEvento: tipoSeleccionado,
                       cursoId: cursoId,
                     );
                     if (ctx.mounted) Navigator.pop(ctx);
