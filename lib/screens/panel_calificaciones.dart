@@ -1275,6 +1275,11 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                 ? (cierreCuat!['calificacion_numerica'] as num).toStringAsFixed(0) : '';
             final intDic = formatNota(cierreDic);
             final intFeb = formatNota(cierreFeb);
+            // Datos de seguimiento
+            final cierreSeg = buscarCierre(etapaSeg);
+            final riteSeg    = cierreSeg?['condicion_trayectoria']?.toString() ?? '';
+            final calSeg     = cierreSeg?['calificacion_numerica'] != null
+                ? (cierreSeg!['calificacion_numerica'] as num).toStringAsFixed(0) : '';
             // calFinal solo para 2° cuatrimestre
             String calFinal = '';
             if (tipoBoletin == '2°C') {
@@ -1298,6 +1303,9 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                 <td class="td-c">${crs('criterio_entrega')}</td>
                 <td class="td-c">${crs('criterio_prolijidad')}</td>
                 <td class="td-c">${crs('criterio_aic')}</td>
+                <td class="td-c"></td>
+                <td class="td-c td-tray">$riteSeg</td>
+                <td class="td-c td-final">$calSeg</td>
                 <td class="td-c">${crc('criterio_apropiacion')}</td>
                 <td class="td-c">${crc('criterio_resolucion')}</td>
                 <td class="td-c">${crc('criterio_participacion')}</td>
@@ -1334,9 +1342,9 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               <th class="th-r"><span class="rot">Prolijidad y carpeta</span></th>
               <th class="th-r"><span class="rot">Cumplimiento AIC*</span></th>
               <th class="th-r"><span class="rot">TOTAL INASISTENCIAS</span></th>
-              <th class="th-r"><span class="rot">RESUMEN 1° ETAPA</span></th>
+              <th class="th-r"><span class="rot">RITE 1° ETAPA</span></th>
               <th class="th-r"><span class="rot">CALIFICACIÓN 1° ETAPA</span></th>
-              <th class="th-r"><span class="rot">RESUMEN 2° ETAPA</span></th>
+              <th class="th-r"><span class="rot">RITE 2° ETAPA</span></th>
               <th class="th-r"><span class="rot">CALIFICACIÓN 2° ETAPA</span></th>
               <th class="th-r"><span class="rot">INTENS. DICIEMBRE</span></th>
               <th class="th-r"><span class="rot">INTENS. FEBRERO</span></th>
@@ -1351,22 +1359,24 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               <td class="td-foot" colspan="16" style="height:28px;">INFORME DE PRECEPTORÍA</td>
             </tr>''';
         } else {
-          final esSeg = tipoBoletin == '1°C';
-          final labelCuat = esSeg ? '1° CUATRIMESTRE' : '2° CUATRIMESTRE';
+          final labelCuat = tipoBoletin == '1°C' ? '1° CUATRIMESTRE' : '2° CUATRIMESTRE';
+          // Seguimiento: 7 criterios + INAS + RITE + CAL = 10 cols
+          // Cierre:      7 criterios + INAS + RITE + CAL = 10 cols
+          // Extra 2°C: INTENS DIC + INTENS FEB + CAL FINAL = 3 cols
           final colsExtraHeader = tipoBoletin == '2°C'
-              ? '<th class="th-r"><span class="rot">INTENS. DICIEMBRE</span></th>'
-                '<th class="th-r"><span class="rot">INTENS. FEBRERO</span></th>'
-                '<th class="th-r"><span class="rot">CALIFICACIÓN FINAL</span></th>'
+              ? '<th colspan="3" class="th-group">INTENSIFICACIONES</th>'
               : '';
-          final totalColsCuat = tipoBoletin == '2°C' ? 21 : 18;
+          final colsExtraHeader2 = tipoBoletin == '2°C'
+              ? '<th class="th-r"><span class="rot">INTENS. DIC</span></th>'
+                '<th class="th-r"><span class="rot">INTENS. FEB</span></th>'
+                '<th class="th-r"><span class="rot">CAL. FINAL</span></th>'
+              : '';
+          final totalColsCuat = tipoBoletin == '2°C' ? 24 : 21;
           tablaHeader = '''
             <tr>
-              <th rowspan="3" class="th-mat">MATERIA</th>
-              <th colspan="7" class="th-group">SEGUIMIENTO — $labelCuat</th>
-              <th colspan="7" class="th-group">CIERRE — $labelCuat</th>
-              <th rowspan="3" class="th-r"><span class="rot">INASISTENCIAS</span></th>
-              <th rowspan="3" class="th-r"><span class="rot">RESUMEN</span></th>
-              <th rowspan="3" class="th-r"><span class="rot">CALIFICACIÓN</span></th>
+              <th rowspan="2" class="th-mat">MATERIA</th>
+              <th colspan="10" class="th-group">SEGUIMIENTO — $labelCuat</th>
+              <th colspan="10" class="th-group">CIERRE — $labelCuat</th>
               $colsExtraHeader
             </tr>
             <tr>
@@ -1377,6 +1387,9 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               <th class="th-r th-grp-seg"><span class="rot">Entrega</span></th>
               <th class="th-r th-grp-seg"><span class="rot">Prolijidad</span></th>
               <th class="th-r th-grp-seg"><span class="rot">AIC*</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">INAS.</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">RITE</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">CAL.</span></th>
               <th class="th-r th-grp-cie"><span class="rot">Apropiación</span></th>
               <th class="th-r th-grp-cie"><span class="rot">Resolución</span></th>
               <th class="th-r th-grp-cie"><span class="rot">Participación</span></th>
@@ -1384,14 +1397,14 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               <th class="th-r th-grp-cie"><span class="rot">Entrega</span></th>
               <th class="th-r th-grp-cie"><span class="rot">Prolijidad</span></th>
               <th class="th-r th-grp-cie"><span class="rot">AIC*</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">INAS.</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">RITE</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">CAL.</span></th>
+              $colsExtraHeader2
             </tr>''';
           tablaFooter = '''
             <tr>
-              <td class="td-foot" colspan="${tipoBoletin == '2°C' ? 17 : 17}">TOTAL DE INASISTENCIAS DIARIAS</td>
-              <td class="td-c" colspan="${tipoBoletin == '2°C' ? 4 : 1}"></td>
-            </tr>
-            <tr>
-              <td class="td-foot" colspan="$totalColsCuat" style="height:28px;">INFORME DE PRECEPTORÍA</td>
+              <td class="td-foot" colspan="${totalColsCuat}" style="height:20px;">INFORME DE PRECEPTORÍA</td>
             </tr>''';
         }
 
