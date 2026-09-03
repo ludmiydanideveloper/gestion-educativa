@@ -285,6 +285,33 @@ class SupabaseService {
     });
   }
 
+  /// Borra los registros de CONDUCTA DIARIA de una fecha para los alumnos dados.
+  /// Se llama antes de volver a guardar la planilla del día: sin esto, guardar
+  /// dos veces el mismo día duplica las filas y altera la nota RITE de conducta
+  /// (un "Mal" contado dos veces baja 3 puntos en vez de 1,5).
+  /// Solo toca filas cuya descripción arranca con "Conducta diaria:", así que
+  /// las sanciones e incidencias reales quedan intactas.
+  Future<void> limpiarConductaDiaria({
+    required List<String> alumnoIds,
+    required DateTime fecha,
+  }) async {
+    if (alumnoIds.isEmpty) return;
+    final dia = DateTime(fecha.year, fecha.month, fecha.day);
+    final desde = dia.toIso8601String();
+    final hasta = dia.add(const Duration(days: 1)).toIso8601String();
+    try {
+      await _client
+          .from('aca_conducta')
+          .delete()
+          .inFilter('alumno_id', alumnoIds)
+          .like('descripcion', 'Conducta diaria:%')
+          .gte('fecha', desde)
+          .lt('fecha', hasta);
+    } catch (e) {
+      print('Error al limpiar conducta diaria previa: $e');
+    }
+  }
+
   // Mapeo algorítmico del valor decimal de la falta según estado
   double _obtenerValorInasistencia(EstadoAsistencia estado) {
     switch (estado) {

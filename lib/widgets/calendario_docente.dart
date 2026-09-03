@@ -107,7 +107,7 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
       _eventosPorDia[_clave(d)] ?? [];
 
   Color _colorTipo(String tipo) {
-    switch (tipo?.toUpperCase()) {
+    switch (tipo.toUpperCase()) {
       case 'EVALUACION':
         return Colors.purple;
       case 'ACTIVIDAD':
@@ -120,7 +120,7 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
   }
 
   IconData _iconTipo(String tipo) {
-    switch (tipo?.toUpperCase()) {
+    switch (tipo.toUpperCase()) {
       case 'EVALUACION':
         return Icons.quiz_rounded;
       case 'ACTIVIDAD':
@@ -133,7 +133,7 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
   }
 
   String _labelTipo(String tipo) {
-    switch (tipo?.toUpperCase()) {
+    switch (tipo.toUpperCase()) {
       case 'EVALUACION':
         return 'Evaluación';
       case 'ACTIVIDAD':

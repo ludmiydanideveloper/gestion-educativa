@@ -89,6 +89,16 @@ class _PanelConductaDiariaState extends State<PanelConductaDiaria> {
   Future<void> _guardarConducta(List<_ConductaAlumno> alumnos) async {
     setState(() => _guardando = true);
     int errores = 0;
+
+    // Borrar lo ya cargado hoy para estos alumnos: si el preceptor guarda dos
+    // veces el mismo día, sin esto se duplican las filas y la nota RITE queda mal.
+    final idsValidos =
+        alumnos.where((a) => a.alumnoId.isNotEmpty).map((a) => a.alumnoId).toList();
+    await _service.limpiarConductaDiaria(
+      alumnoIds: idsValidos,
+      fecha: DateTime.now(),
+    );
+
     for (final a in alumnos) {
       if (a.alumnoId.isEmpty) continue;
       // Guardar SIEMPRE — incluso los alumnos "Bien" — para que el resumen
