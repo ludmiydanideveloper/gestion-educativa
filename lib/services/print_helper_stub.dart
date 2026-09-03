@@ -20,7 +20,7 @@ class PrintHelper {
     throw UnsupportedError('La impresión solo está soportada en Web.');
   }
 
-  static void imprimirHTML({required String titulo, required String htmlContentBody}) {
+  static void imprimirHTML({required String titulo, required String htmlContentBody, bool mostrarEncabezado = true}) {
     throw UnsupportedError('La impresión solo está soportada en Web.');
   }
 

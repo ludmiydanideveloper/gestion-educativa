@@ -1096,7 +1096,26 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
     }
   }
 
-  Future<void> _imprimirBoletinGeneralCurso({AlumnoAsistencia? alumnoEspecifico}) async {
+  /// Muestra un diálogo para elegir el tipo de boletín antes de imprimir.
+  Future<void> _mostrarDialogoImpresion({AlumnoAsistencia? alumnoEspecifico}) async {
+    String? elegido = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Imprimir Boletín', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('¿Qué período querés imprimir?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, '1°C'), child: const Text('1° Cuatrimestre')),
+          TextButton(onPressed: () => Navigator.pop(ctx, '2°C'), child: const Text('2° Cuatrimestre')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, 'ANUAL'), child: const Text('Anual')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+        ],
+      ),
+    );
+    if (elegido == null) return;
+    await _imprimirBoletinGeneralCurso(alumnoEspecifico: alumnoEspecifico, tipoBoletin: elegido);
+  }
+
+  Future<void> _imprimirBoletinGeneralCurso({AlumnoAsistencia? alumnoEspecifico, String tipoBoletin = 'ANUAL'}) async {
     setState(() => _isLoading = true);
     try {
       String? cursoId = widget.cursoId;
@@ -1151,18 +1170,27 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
           final nombreMat =
               (mat['nombre_asignatura'] ?? 'Materia').toString().toUpperCase();
 
-          // Rúbrica cualitativa: preferir 1° ETAPA, luego cualquier otra
+          // Todas las rubricas de este alumno/materia
           final rubricasMat = rubricas
               .where((r) =>
                   r['alumno_id'] == alumno.id && r['materia_id'] == matId)
               .toList();
-          Map<String, dynamic>? rubrica;
-          if (rubricasMat.isNotEmpty) {
-            rubrica = rubricasMat.firstWhere(
-              (r) => r['etapa'] == '1° ETAPA',
-              orElse: () => rubricasMat.first,
-            );
-          }
+
+          // Etapa base según tipo de boletín
+          final etapaSeg = tipoBoletin == '2°C' ? '2° SEGUIMIENTO' : '1° SEGUIMIENTO';
+          final etapaCierre = tipoBoletin == '2°C' ? '2° CIERRE' : '1° CIERRE';
+
+          Map<String, dynamic>? buscarRubrica(String et) =>
+              rubricasMat.where((r) => r['etapa'] == et).isNotEmpty
+                  ? rubricasMat.firstWhere((r) => r['etapa'] == et)
+                  : null;
+
+          // Para ANUAL: criterios del 1° CIERRE; para cuatrimestre: del cierre correspondiente
+          final rubricaSeg = buscarRubrica(etapaSeg);
+          final rubricaCierre = buscarRubrica(etapaCierre);
+          // Fallback para ANUAL
+          final rubrica = rubricaCierre ?? rubricaSeg ??
+              (rubricasMat.isNotEmpty ? rubricasMat.first : null);
 
           // Cierres de etapa para esta materia/alumno
           final cierresMat = cierres
@@ -1176,76 +1204,196 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             return matches.isNotEmpty ? matches.first : null;
           }
 
-          final cierre1   = buscarCierre('1° ETAPA');
-          final cierre2   = buscarCierre('2° ETAPA');
+          final cierre1   = buscarCierre('1° CIERRE');
+          final cierre2   = buscarCierre('2° CIERRE');
           final cierreDic = buscarCierre('INTENSIFICACION_DIC');
           final cierreFeb = buscarCierre('INTENSIFICACION_FEB');
 
-          // Criterios de rúbrica
+          // Criterios de rúbrica (usados en boletín ANUAL)
           String cr(String key) => rubrica?[key]?.toString() ?? '';
-          final ap  = cr('criterio_apropiacion');
-          final res = cr('criterio_resolucion');
-          final par = cr('criterio_participacion');
-          final pla = cr('criterio_planteos');
-          final ent = cr('criterio_entrega');
-          final pro = cr('criterio_prolijidad');
-          final aic = cr('criterio_aic');
+          // Criterios del seguimiento (cuatrimestre)
+          String crs(String key) => rubricaSeg?[key]?.toString() ?? '';
+          // Criterios del cierre (cuatrimestre)
+          String crc(String key) => rubricaCierre?[key]?.toString() ?? '';
 
-          // Resumen de trayectoria (TEA / TEP / TED)
-          final resumen1 = cierre1?['condicion_trayectoria']?.toString() ?? '';
-          final resumen2 = cierre2?['condicion_trayectoria']?.toString() ?? '';
-
-          // Intensificaciones
           String formatNota(Map<String, dynamic>? c) =>
               c?['calificacion_numerica'] != null
                   ? (c!['calificacion_numerica'] as num).toStringAsFixed(1)
                   : '';
-          final intDic = formatNota(cierreDic);
-          final intFeb = formatNota(cierreFeb);
 
-          // Calificación final = promedio de las 2 etapas
-          final nota1 = cierre1?['calificacion_numerica'] != null
-              ? (cierre1!['calificacion_numerica'] as num).toDouble()
-              : null;
-          final nota2 = cierre2?['calificacion_numerica'] != null
-              ? (cierre2!['calificacion_numerica'] as num).toDouble()
-              : null;
-          String calFinal = '';
-          if (nota1 != null && nota2 != null) {
-            calFinal = ((nota1 + nota2) / 2).toStringAsFixed(1);
-          } else if (nota1 != null) {
-            calFinal = nota1.toStringAsFixed(1);
-          } else if (nota2 != null) {
-            calFinal = nota2.toStringAsFixed(1);
+          if (tipoBoletin == 'ANUAL') {
+            // ── Boletín ANUAL: 1 set criterios (del cierre) + ambas calificaciones ──
+            final ap  = cr('criterio_apropiacion');
+            final res = cr('criterio_resolucion');
+            final par = cr('criterio_participacion');
+            final pla = cr('criterio_planteos');
+            final ent = cr('criterio_entrega');
+            final pro = cr('criterio_prolijidad');
+            final aic = cr('criterio_aic');
+
+            final resumen1 = cierre1?['condicion_trayectoria']?.toString() ?? '';
+            final resumen2 = cierre2?['condicion_trayectoria']?.toString() ?? '';
+            final intDic = formatNota(cierreDic);
+            final intFeb = formatNota(cierreFeb);
+
+            final nota1 = cierre1?['calificacion_numerica'] != null
+                ? (cierre1!['calificacion_numerica'] as num).toDouble() : null;
+            final nota2 = cierre2?['calificacion_numerica'] != null
+                ? (cierre2!['calificacion_numerica'] as num).toDouble() : null;
+            String calFinal = '';
+            if (nota1 != null && nota2 != null) {
+              calFinal = ((nota1 + nota2) / 2).toStringAsFixed(1);
+            } else if (nota1 != null) {
+              calFinal = nota1.toStringAsFixed(1);
+            } else if (nota2 != null) {
+              calFinal = nota2.toStringAsFixed(1);
+            }
+            final nota1Str = nota1 != null ? nota1.toStringAsFixed(0) : '';
+            final nota2Str = nota2 != null ? nota2.toStringAsFixed(0) : '';
+
+            filasMaterias.add('''
+              <tr>
+                <td class="td-mat">$nombreMat</td>
+                <td class="td-c">$ap</td><td class="td-c">$res</td><td class="td-c">$par</td>
+                <td class="td-c">$pla</td><td class="td-c">$ent</td><td class="td-c">$pro</td>
+                <td class="td-c">$aic</td>
+                <td class="td-c"></td>
+                <td class="td-c td-tray">$resumen1</td>
+                <td class="td-c td-final">$nota1Str</td>
+                <td class="td-c td-tray">$resumen2</td>
+                <td class="td-c td-final">$nota2Str</td>
+                <td class="td-c">$intDic</td>
+                <td class="td-c">$intFeb</td>
+                <td class="td-c td-final">$calFinal</td>
+              </tr>
+            ''');
+          } else {
+            // ── Boletín CUATRIMESTRAL: seguimiento + cierre, 1 calificación ──
+            final cierreCuat = tipoBoletin == '2°C' ? cierre2 : cierre1;
+            final resumenCuat = cierreCuat?['condicion_trayectoria']?.toString() ?? '';
+            final notaCuat = cierreCuat?['calificacion_numerica'] != null
+                ? (cierreCuat!['calificacion_numerica'] as num).toStringAsFixed(0) : '';
+            final intDic = formatNota(cierreDic);
+            final intFeb = formatNota(cierreFeb);
+            // calFinal solo para 2° cuatrimestre
+            String calFinal = '';
+            if (tipoBoletin == '2°C') {
+              final n1 = cierre1?['calificacion_numerica'] != null
+                  ? (cierre1!['calificacion_numerica'] as num).toDouble() : null;
+              final n2 = cierre2?['calificacion_numerica'] != null
+                  ? (cierre2!['calificacion_numerica'] as num).toDouble() : null;
+              if (n1 != null && n2 != null) calFinal = ((n1 + n2) / 2).toStringAsFixed(1);
+              else if (n2 != null) calFinal = n2.toStringAsFixed(1);
+            }
+            final colsExtra = tipoBoletin == '2°C'
+                ? '<td class="td-c">$intDic</td><td class="td-c">$intFeb</td><td class="td-c td-final">$calFinal</td>'
+                : '';
+            filasMaterias.add('''
+              <tr>
+                <td class="td-mat">$nombreMat</td>
+                <td class="td-c">${crs('criterio_apropiacion')}</td>
+                <td class="td-c">${crs('criterio_resolucion')}</td>
+                <td class="td-c">${crs('criterio_participacion')}</td>
+                <td class="td-c">${crs('criterio_planteos')}</td>
+                <td class="td-c">${crs('criterio_entrega')}</td>
+                <td class="td-c">${crs('criterio_prolijidad')}</td>
+                <td class="td-c">${crs('criterio_aic')}</td>
+                <td class="td-c">${crc('criterio_apropiacion')}</td>
+                <td class="td-c">${crc('criterio_resolucion')}</td>
+                <td class="td-c">${crc('criterio_participacion')}</td>
+                <td class="td-c">${crc('criterio_planteos')}</td>
+                <td class="td-c">${crc('criterio_entrega')}</td>
+                <td class="td-c">${crc('criterio_prolijidad')}</td>
+                <td class="td-c">${crc('criterio_aic')}</td>
+                <td class="td-c"></td>
+                <td class="td-c td-tray">$resumenCuat</td>
+                <td class="td-c td-final">$notaCuat</td>
+                $colsExtra
+              </tr>
+            ''');
           }
-
-          final nota1Str = nota1 != null ? nota1.toStringAsFixed(0) : '';
-          final nota2Str = nota2 != null ? nota2.toStringAsFixed(0) : '';
-
-          filasMaterias.add('''
-            <tr>
-              <td class="td-mat">$nombreMat</td>
-              <td class="td-c">$ap</td>
-              <td class="td-c">$res</td>
-              <td class="td-c">$par</td>
-              <td class="td-c">$pla</td>
-              <td class="td-c">$ent</td>
-              <td class="td-c">$pro</td>
-              <td class="td-c">$aic</td>
-              <td class="td-c"></td>
-              <td class="td-c td-tray">$resumen1</td>
-              <td class="td-c td-final">$nota1Str</td>
-              <td class="td-c td-tray">$resumen2</td>
-              <td class="td-c td-final">$nota2Str</td>
-              <td class="td-c">$intDic</td>
-              <td class="td-c">$intFeb</td>
-              <td class="td-c td-final">$calFinal</td>
-            </tr>
-          ''');
         }
 
-        final anio = DateTime.now().year;
         final tablaMateriaHtml = filasMaterias.join('');
+
+        // Encabezado de tabla según tipo de boletín
+        final String tablaHeader;
+        final String tablaFooter;
+        if (tipoBoletin == 'ANUAL') {
+          tablaHeader = '''
+            <tr>
+              <th rowspan="2" class="th-mat">MATERIA</th>
+              <th colspan="15" class="th-group">CRITERIOS Y CALIFICACIÓN</th>
+            </tr>
+            <tr>
+              <th class="th-r"><span class="rot">Apropiación de los contenidos</span></th>
+              <th class="th-r"><span class="rot">Resolución de actividades</span></th>
+              <th class="th-r"><span class="rot">Participación en clases</span></th>
+              <th class="th-r"><span class="rot">Planteos y dudas</span></th>
+              <th class="th-r"><span class="rot">Entrega en tiempo y forma</span></th>
+              <th class="th-r"><span class="rot">Prolijidad y carpeta</span></th>
+              <th class="th-r"><span class="rot">Cumplimiento AIC*</span></th>
+              <th class="th-r"><span class="rot">TOTAL INASISTENCIAS</span></th>
+              <th class="th-r"><span class="rot">RESUMEN 1° ETAPA</span></th>
+              <th class="th-r"><span class="rot">CALIFICACIÓN 1° ETAPA</span></th>
+              <th class="th-r"><span class="rot">RESUMEN 2° ETAPA</span></th>
+              <th class="th-r"><span class="rot">CALIFICACIÓN 2° ETAPA</span></th>
+              <th class="th-r"><span class="rot">INTENS. DICIEMBRE</span></th>
+              <th class="th-r"><span class="rot">INTENS. FEBRERO</span></th>
+              <th class="th-r"><span class="rot">CALIFICACIÓN FINAL</span></th>
+            </tr>''';
+          tablaFooter = '''
+            <tr>
+              <td class="td-foot" colspan="9">TOTAL DE INASISTENCIAS DIARIAS</td>
+              <td class="td-c" colspan="7"></td>
+            </tr>
+            <tr>
+              <td class="td-foot" colspan="16" style="height:28px;">INFORME DE PRECEPTORÍA</td>
+            </tr>''';
+        } else {
+          final esSeg = tipoBoletin == '1°C';
+          final labelCuat = esSeg ? '1° CUATRIMESTRE' : '2° CUATRIMESTRE';
+          final colsExtraHeader = tipoBoletin == '2°C'
+              ? '<th class="th-r"><span class="rot">INTENS. DICIEMBRE</span></th>'
+                '<th class="th-r"><span class="rot">INTENS. FEBRERO</span></th>'
+                '<th class="th-r"><span class="rot">CALIFICACIÓN FINAL</span></th>'
+              : '';
+          final totalColsCuat = tipoBoletin == '2°C' ? 21 : 18;
+          tablaHeader = '''
+            <tr>
+              <th rowspan="3" class="th-mat">MATERIA</th>
+              <th colspan="7" class="th-group">SEGUIMIENTO — $labelCuat</th>
+              <th colspan="7" class="th-group">CIERRE — $labelCuat</th>
+              <th rowspan="3" class="th-r"><span class="rot">INASISTENCIAS</span></th>
+              <th rowspan="3" class="th-r"><span class="rot">RESUMEN</span></th>
+              <th rowspan="3" class="th-r"><span class="rot">CALIFICACIÓN</span></th>
+              $colsExtraHeader
+            </tr>
+            <tr>
+              <th class="th-r th-grp-seg"><span class="rot">Apropiación</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">Resolución</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">Participación</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">Planteos</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">Entrega</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">Prolijidad</span></th>
+              <th class="th-r th-grp-seg"><span class="rot">AIC*</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">Apropiación</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">Resolución</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">Participación</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">Planteos</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">Entrega</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">Prolijidad</span></th>
+              <th class="th-r th-grp-cie"><span class="rot">AIC*</span></th>
+            </tr>''';
+          tablaFooter = '''
+            <tr>
+              <td class="td-foot" colspan="${tipoBoletin == '2°C' ? 17 : 17}">TOTAL DE INASISTENCIAS DIARIAS</td>
+              <td class="td-c" colspan="${tipoBoletin == '2°C' ? 4 : 1}"></td>
+            </tr>
+            <tr>
+              <td class="td-foot" colspan="$totalColsCuat" style="height:28px;">INFORME DE PRECEPTORÍA</td>
+            </tr>''';
+        }
 
         boletinesHtml.add('''
           <div class="boletin-page">
@@ -1272,37 +1420,11 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
             <!-- ===== TABLA PRINCIPAL ===== -->
             <table class="tbl">
               <thead>
-                <tr>
-                  <th rowspan="2" class="th-mat">MATERIA</th>
-                  <th colspan="15" class="th-group">CRITERIOS Y CALIFICACIÓN</th>
-                </tr>
-                <tr>
-                  <th class="th-r"><span class="rot">Apropiación de los contenidos trabajados</span></th>
-                  <th class="th-r"><span class="rot">Resolución de las actividades propuestas en tiempo</span></th>
-                  <th class="th-r"><span class="rot">Participación en clases</span></th>
-                  <th class="th-r"><span class="rot">Planteos de dudas, opiniones y sugerencias</span></th>
-                  <th class="th-r"><span class="rot">Entrega de las actividades</span></th>
-                  <th class="th-r"><span class="rot">Prolijidad, responsabilidad y carpeta completa.</span></th>
-                  <th class="th-r"><span class="rot">Cumplimiento de los AIC*</span></th>
-                  <th class="th-r"><span class="rot">TOTAL INASISTENCIAS</span></th>
-                  <th class="th-r"><span class="rot">RESUMEN DE TRAYECTORIA 1° ETAPA</span></th>
-                  <th class="th-r"><span class="rot">CALIFICACIÓN 1° ETAPA</span></th>
-                  <th class="th-r"><span class="rot">RESUMEN DE TRAYECTORIA 2° ETAPA</span></th>
-                  <th class="th-r"><span class="rot">CALIFICACIÓN 2° ETAPA</span></th>
-                  <th class="th-r"><span class="rot">INTENSIFICACIÓN DICIEMBRE</span></th>
-                  <th class="th-r"><span class="rot">INTENSIFICACIÓN FEBRERO</span></th>
-                  <th class="th-r"><span class="rot">CALIFICACIÓN FINAL</span></th>
-                </tr>
+                $tablaHeader
               </thead>
               <tbody>
                 $tablaMateriaHtml
-                <tr>
-                  <td class="td-foot" colspan="9">TOTAL DE INASISTENCIAS DIARIAS</td>
-                  <td class="td-c" colspan="7"></td>
-                </tr>
-                <tr>
-                  <td class="td-foot" colspan="16" style="height:28px;">INFORME DE PRECEPTORÍA</td>
-                </tr>
+                $tablaFooter
               </tbody>
             </table>
 
@@ -1404,6 +1526,8 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               vertical-align: middle; text-align: center;
               background: #fff;
             }
+            .th-grp-seg { background: #E8F4FD; }
+            .th-grp-cie { background: #F0F7EC; }
             .rot {
               display: block;
               font-size: 8px;
@@ -1613,7 +1737,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                     backgroundColor: Colors.blueGrey.shade800,
                     foregroundColor: Colors.white,
                   ),
-                  onPressed: () => _imprimirBoletinGeneralCurso(),
+                  onPressed: () => _mostrarDialogoImpresion(),
                 ),
                 const SizedBox(width: 12),
               ],
@@ -2017,7 +2141,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                                 IconButton(
                                                   icon: const Icon(Icons.description_outlined, size: 16, color: Colors.blueGrey),
                                                   tooltip: 'Ver Boletín General de ${alumno.nombre}',
-                                                  onPressed: () => _imprimirBoletinGeneralCurso(alumnoEspecifico: alumno),
+                                                  onPressed: () => _mostrarDialogoImpresion(alumnoEspecifico: alumno),
                                                 ),
                                               ],
                                             ),
@@ -2423,8 +2547,8 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
       return;
     }
 
-    const etapas = ['1° ETAPA', '2° ETAPA'];
-    String etapa = '1° ETAPA';
+    const etapas = ['1° SEGUIMIENTO', '1° CIERRE', '2° SEGUIMIENTO', '2° CIERRE'];
+    String etapa = '1° SEGUIMIENTO';
 
     // Mapa de valores: alumnoId → criterioKey → 'S'/'MB'/'B'/'R'/null
     final Map<String, Map<String, String?>> vals = {};
