@@ -59,7 +59,11 @@ class AppTheme {
         ),
       ),
       // Tema de Tarjetas
-      cardTheme: const CardTheme(
+      // CardThemeData, no CardTheme: la app se compila con el Flutter fijado
+      // en vercel_build.sh (3.38.10), donde ThemeData.cardTheme ya no acepta
+      // CardTheme. Con SDK viejos locales esta línea no compila; la referencia
+      // es la versión del deploy.
+      cardTheme: const CardThemeData(
         color: surfaceColor,
         elevation: 0,
         margin: EdgeInsets.zero,
