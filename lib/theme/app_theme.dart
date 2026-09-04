@@ -59,7 +59,7 @@ class AppTheme {
         ),
       ),
       // Tema de Tarjetas
-      cardTheme: const CardThemeData(
+      cardTheme: const CardTheme(
         color: surfaceColor,
         elevation: 0,
         margin: EdgeInsets.zero,

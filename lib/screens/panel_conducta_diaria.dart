@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 
 // ── Enum de estado de conducta diaria ──────────────────────────────────────
@@ -326,19 +325,8 @@ class _PanelConductaDiariaState extends State<PanelConductaDiaria> {
                     );
                   }
 
-                  // Guardar en tabla calificaciones legacy para boletines e historial RITE
-                  await Supabase.instance.client.from('calificaciones').insert({
-                    'curso_id': widget.cursoId,
-                    'materia_id': materiaIdEncontrada,
-                    'alumno_id': c['alumno_id'],
-                    'periodo': '1° Trimestre',
-                    'instancia': 'Desempeño Diario Conducta ($mesNombre - 30% RITE)',
-                    'calificacion': c['nota_numerica'],
-                    'es_rite': true,
-                    'calificacion_rite': c['concepto'],
-                    'observaciones': 'Generada automáticamente desde registro de Conducta Diaria.',
-                    'created_at': DateTime.now().toIso8601String(),
-                  });
+                  // La nota queda en aca_calificaciones (upsertCalificacion), que
+                  // es la tabla que leen la planilla y los boletines.
                   guardados++;
                 } catch (_) {}
               }

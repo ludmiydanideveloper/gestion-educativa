@@ -1570,10 +1570,12 @@ class SupabaseService {
         }
       }
       if (destinatariosRoles.contains('Preceptores / Administrativos')) {
-        final res = await _client.from('usr_legajos').select('auth_id, rol');
+        // El rol del personal se guarda en usr_docentes.ddjj_cargos
+        final res = await _client.from('usr_docentes').select('auth_id, ddjj_cargos');
         for (var r in res) {
-          final rol = r['rol']?.toString().toUpperCase() ?? '';
-          if (r['auth_id'] != null && (rol == 'PRECEPTOR' || rol == 'ADMIN' || rol == 'DIRECTIVO')) {
+          final cargos = r['ddjj_cargos']?.toString().toUpperCase() ?? '';
+          if (r['auth_id'] != null &&
+              (cargos.contains('PRECEPTOR') || cargos.contains('ADMIN') || cargos.contains('DIRECT'))) {
             authIds.add(r['auth_id'].toString());
           }
         }
@@ -1733,7 +1735,9 @@ class SupabaseService {
     }
   }
 
-  /// Registra el temario dictado usando la tabla acad_calendario con un tipo especial
+  /// Registra el temario dictado usando la tabla acad_calendario con un tipo especial.
+  /// Requiere haber aplicado temarios_migration.sql (habilita tipo_evento='TEMARIO'
+  /// y la columna materia_id). Si la columna todavía no existe, reintenta sin ella.
   Future<void> registrarTemario({
     required String cursoId,
     required String materiaId,
@@ -1741,17 +1745,40 @@ class SupabaseService {
     required String tema,
     required String fecha,
   }) async {
-    await _client.from('acad_calendario').insert({
+    final base = <String, dynamic>{
       'titulo': materiaNombre,
       'descripcion': tema,
       'fecha': fecha,
       'tipo_evento': 'TEMARIO',
       'curso_id': cursoId,
-    });
+    };
+    try {
+      await _client.from('acad_calendario').insert({...base, 'materia_id': materiaId});
+    } catch (e) {
+      // Sólo se reintenta si la base todavía no tiene la columna materia_id.
+      // Cualquier otro error (por ejemplo, un temario duplicado para esa fecha)
+      // se propaga para que la pantalla lo muestre en vez de guardar de más.
+      final msg = e.toString().toLowerCase();
+      final faltaColumna = msg.contains('materia_id') &&
+          (msg.contains('column') || msg.contains('columna') || msg.contains('schema cache'));
+      if (!faltaColumna) rethrow;
+      await _client.from('acad_calendario').insert(base);
+    }
+  }
+
+  /// Actualiza un temario ya cargado (por su evento_id)
+  Future<void> actualizarTemario({
+    required String eventoId,
+    required String tema,
+    String? fecha,
+  }) async {
+    final data = <String, dynamic>{'descripcion': tema};
+    if (fecha != null) data['fecha'] = fecha;
+    await _client.from('acad_calendario').update(data).eq('evento_id', eventoId);
   }
 
   /// Obtiene los temarios cargados para un curso específico
-  Future<List<Map<String, dynamic>>> obtenerTemarios({String? cursoId}) async {
+  Future<List<Map<String, dynamic>>> obtenerTemarios({String? cursoId, String? materiaId}) async {
     try {
       var query = _client
           .from('acad_calendario')
@@ -1760,10 +1787,15 @@ class SupabaseService {
       if (cursoId != null) {
         query = query.eq('curso_id', cursoId);
       }
+      if (materiaId != null) {
+        query = query.eq('materia_id', materiaId);
+      }
       final response = await query.order('fecha', ascending: false);
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       print('Error al obtener temarios: $e');
+      // Reintento sin filtro de materia por si la columna aún no está migrada
+      if (materiaId != null) return obtenerTemarios(cursoId: cursoId);
       return [];
     }
   }
@@ -1978,9 +2010,11 @@ class SupabaseService {
     }
   }
 
-  Future<void> guardarArchivoPersonal({
+  /// Sube un archivo del legajo personal y devuelve el id generado, para poder
+  /// enlazarlo (por ejemplo, un certificado con su licencia).
+  Future<String?> guardarArchivoPersonal({
     required String authId,
-    required String tipoArchivo, // 'DDJJ' o 'CV'
+    required String tipoArchivo, // 'DDJJ' | 'CV' | 'CERTIFICADO'
     required String nombreArchivo,
     required String formato, // 'PDF' o 'WORD'
     required String base64Data,
@@ -1993,7 +2027,7 @@ class SupabaseService {
         .maybeSingle();
     final docenteId = docData?['docente_id'] as String?;
 
-    await _client.from('usr_archivos_personal').insert({
+    final res = await _client.from('usr_archivos_personal').insert({
       'auth_id': authId,
       'docente_id': docenteId,
       'tipo_archivo': tipoArchivo,
@@ -2001,11 +2035,226 @@ class SupabaseService {
       'formato': formato,
       'datos_base64': base64Data,
       'fecha_subida': DateTime.now().toIso8601String(),
+    }).select('id').maybeSingle();
+
+    return res?['id']?.toString();
+  }
+
+  /// Guarda los datos de contacto del propio perfil docente.
+  /// Va por RPC porque la política de usr_docentes sólo permite UPDATE a
+  /// ADMIN/DIRECTIVO: la función actualiza sólo la fila del usuario actual y
+  /// nunca toca ddjj_cargos (que define privilegios).
+  Future<void> actualizarMiPerfilDocente({
+    String? telefono,
+    String? domicilio,
+    String? tituloProfesional,
+    String? especialidad,
+  }) async {
+    await _client.rpc('actualizar_mi_perfil_docente', params: {
+      'p_telefono': telefono,
+      'p_domicilio': domicilio,
+      'p_titulo_profesional': tituloProfesional,
+      'p_especialidad': especialidad,
     });
   }
 
   Future<void> eliminarArchivoPersonal(String archivoId) async {
     await _client.from('usr_archivos_personal').delete().eq('id', archivoId);
+  }
+
+  // --- FALTAS Y LICENCIAS DEL DOCENTE ---
+
+  /// Inasistencias y licencias del docente autenticado (o del que se indique).
+  Future<List<Map<String, dynamic>>> obtenerInasistenciasDocente(String authId) async {
+    try {
+      final res = await _client
+          .from('usr_docente_inasistencias')
+          .select('*, usr_archivos_personal(id, nombre_archivo, formato, datos_base64)')
+          .eq('auth_id', authId)
+          .order('fecha_desde', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      print('Error al obtener inasistencias del docente: $e');
+      return [];
+    }
+  }
+
+  /// Registra una falta o licencia. [archivoId] enlaza el certificado ya subido.
+  Future<void> registrarInasistenciaDocente({
+    required String authId,
+    required String tipo, // 'INJUSTIFICADA' | 'JUSTIFICADA' | 'LICENCIA'
+    required DateTime fechaDesde,
+    required DateTime fechaHasta,
+    String? motivo,
+    String? observaciones,
+    String? archivoId,
+  }) async {
+    final docData = await _client
+        .from('usr_docentes')
+        .select('docente_id')
+        .eq('auth_id', authId)
+        .maybeSingle();
+
+    await _client.from('usr_docente_inasistencias').insert({
+      'auth_id': authId,
+      'docente_id': docData?['docente_id'],
+      'tipo': tipo,
+      'fecha_desde': fechaDesde.toIso8601String().substring(0, 10),
+      'fecha_hasta': fechaHasta.toIso8601String().substring(0, 10),
+      'motivo': motivo,
+      'observaciones': observaciones,
+      'archivo_id': archivoId,
+    });
+  }
+
+  Future<void> eliminarInasistenciaDocente(String id) async {
+    await _client.from('usr_docente_inasistencias').delete().eq('id', id);
+  }
+
+  /// Resumen para las tarjetas del perfil: días injustificados, licencias y
+  /// porcentaje de presentismo del mes en curso.
+  /// El presentismo se calcula sobre los días hábiles (lunes a viernes) del mes.
+  Map<String, dynamic> resumirInasistencias(
+    List<Map<String, dynamic>> inasistencias, {
+    DateTime? mesDeReferencia,
+  }) {
+    final ref = mesDeReferencia ?? DateTime.now();
+    final inicioMes = DateTime(ref.year, ref.month, 1);
+    final finMes = DateTime(ref.year, ref.month + 1, 0);
+
+    int diasEntre(DateTime a, DateTime b) => b.difference(a).inDays + 1;
+
+    int injustificadas = 0;
+    int licencias = 0;
+    int diasAusentesEnElMes = 0;
+
+    for (final i in inasistencias) {
+      final desde = DateTime.tryParse((i['fecha_desde'] ?? '').toString());
+      final hasta = DateTime.tryParse((i['fecha_hasta'] ?? '').toString()) ?? desde;
+      if (desde == null || hasta == null) continue;
+
+      final dias = diasEntre(desde, hasta);
+      final tipo = (i['tipo'] ?? '').toString().toUpperCase();
+      if (tipo == 'INJUSTIFICADA') {
+        injustificadas += dias;
+      } else {
+        licencias += dias;
+      }
+
+      // Solapamiento con el mes de referencia, contando sólo días hábiles
+      final desdeMes = desde.isBefore(inicioMes) ? inicioMes : desde;
+      final hastaMes = hasta.isAfter(finMes) ? finMes : hasta;
+      if (!hastaMes.isBefore(desdeMes)) {
+        for (var d = desdeMes;
+            !d.isAfter(hastaMes);
+            d = d.add(const Duration(days: 1))) {
+          if (d.weekday <= 5) diasAusentesEnElMes++;
+        }
+      }
+    }
+
+    int habilesDelMes = 0;
+    for (var d = inicioMes; !d.isAfter(finMes); d = d.add(const Duration(days: 1))) {
+      if (d.weekday <= 5) habilesDelMes++;
+    }
+
+    final presentismo = habilesDelMes == 0
+        ? 100
+        : (((habilesDelMes - diasAusentesEnElMes) / habilesDelMes) * 100).round().clamp(0, 100);
+
+    return {
+      'injustificadas': injustificadas,
+      'licencias': licencias,
+      'presentismo': presentismo,
+    };
+  }
+
+  // --- OBSERVACIONES ÁULICAS / DEVOLUCIONES DIRECTIVAS ---
+
+  /// Devoluciones de supervisión recibidas por un docente.
+  Future<List<Map<String, dynamic>>> obtenerObservacionesAulicas(String docenteAuthId) async {
+    try {
+      final res = await _client
+          .from('usr_observaciones_aulicas')
+          .select('*, usr_archivos_personal(id, nombre_archivo, formato, datos_base64)')
+          .eq('docente_auth_id', docenteAuthId)
+          .order('fecha_visita', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      print('Error al obtener observaciones áulicas: $e');
+      return [];
+    }
+  }
+
+  /// Historial completo (portal directivo).
+  Future<List<Map<String, dynamic>>> obtenerTodasLasObservacionesAulicas() async {
+    try {
+      final res = await _client
+          .from('usr_observaciones_aulicas')
+          .select('*')
+          .order('fecha_visita', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      print('Error al obtener el historial de supervisión: $e');
+      return [];
+    }
+  }
+
+  /// Registra una visita de clase y notifica al docente observado.
+  Future<void> registrarObservacionAulica({
+    required String docenteAuthId,
+    String? docenteId,
+    String? docenteNombre,
+    String? cursoTexto,
+    required DateTime fechaVisita,
+    String? modulo,
+    String? foco,
+    required String observacion,
+    String? acuerdos,
+    bool notificarDocente = true,
+  }) async {
+    final user = _client.auth.currentUser;
+
+    await _client.from('usr_observaciones_aulicas').insert({
+      'docente_auth_id': docenteAuthId,
+      'docente_id': docenteId,
+      'curso_texto': cursoTexto,
+      'fecha_visita': fechaVisita.toIso8601String().substring(0, 10),
+      'modulo': modulo,
+      'foco': foco,
+      'observacion': observacion,
+      'acuerdos': acuerdos,
+      'subido_por': user?.userMetadata?['nombre'] ?? user?.email ?? 'Equipo Directivo',
+      'subido_por_auth': user?.id,
+      'leido': false,
+    });
+
+    if (notificarDocente) {
+      await notificarSistema(
+        asunto: 'Devolución de Observación Áulica${cursoTexto != null ? ' — $cursoTexto' : ''}',
+        texto: 'Recibiste una nueva devolución de supervisión pedagógica. '
+            'Podés leerla en Mi Perfil > Observaciones de Clases.',
+        destinatariosAuthIds: [docenteAuthId],
+      );
+    }
+  }
+
+  Future<void> marcarObservacionAulicaLeida(String id) async {
+    await _client.from('usr_observaciones_aulicas').update({
+      'leido': true,
+      'fecha_lectura': DateTime.now().toIso8601String(),
+    }).eq('id', id);
+  }
+
+  /// Personal de la institución (docentes y directivos) con su auth_id.
+  Future<List<Map<String, dynamic>>> obtenerPersonalConAuth() async {
+    try {
+      final res = await _client.rpc('get_personal_list');
+      return List<Map<String, dynamic>>.from(res as List);
+    } catch (e) {
+      print('Error al obtener el listado de personal: $e');
+      return [];
+    }
   }
 
   // --- MÉTODOS PARA TRAYECTORIA ESCOLAR DEL ALUMNO ---
@@ -2046,10 +2295,11 @@ class SupabaseService {
       final res = await _client
           .from('acad_materias_adeudadas')
           .select('*')
-          .eq('legajo_id', legajoId)
+          .or('legajo_id.eq.$legajoId,alumno_id.eq.$legajoId')
           .order('anio_origen', ascending: false);
       return List<Map<String, dynamic>>.from(res);
     } catch (e) {
+      print('Error al obtener materias adeudadas: $e');
       return [];
     }
   }
@@ -2076,7 +2326,7 @@ class SupabaseService {
     await _client
         .from('acad_materias_adeudadas')
         .update({'estado': nuevoEstado})
-        .eq('id', id);
+        .eq('adeudada_id', id);
   }
 
   // --- MÉTODOS PARA TRÁMITES Y CONSTANCIAS ---

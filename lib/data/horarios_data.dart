@@ -353,6 +353,47 @@ class HorariosData {
     return null;
   }
 
+  /// Normaliza un nombre de materia para comparar sin tildes ni puntuación.
+  static String _normalizar(String texto) {
+    var t = texto.toLowerCase().trim();
+    const acentos = {'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n'};
+    acentos.forEach((k, v) => t = t.replaceAll(k, v));
+    return t.replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
+
+  /// Días de la semana (1 = Lunes … 7 = Domingo) en los que el curso dicta
+  /// la materia indicada, según la grilla horaria oficial.
+  /// Devuelve una lista vacía si el curso o la materia no figuran en la grilla.
+  static List<int> diasDeDictado(String nombreCurso, String nombreMateria) {
+    final curso = buscarPorNombre(nombreCurso);
+    if (curso == null) return const [];
+
+    const ordenDias = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+    final objetivo = _normalizar(nombreMateria);
+    if (objetivo.isEmpty) return const [];
+
+    final dias = <int>{};
+    for (final dia in curso.dias) {
+      final idx = ordenDias.indexOf(_normalizar(dia.dia));
+      if (idx < 0) continue;
+      for (final bloque in dia.bloques) {
+        final m = _normalizar(bloque.materia);
+        // La coincidencia parcial sólo se admite con nombres largos: si no,
+        // "tic" haría match dentro de "matematica".
+        final parcial = m.length >= 5 &&
+            objetivo.length >= 5 &&
+            (m.contains(objetivo) || objetivo.contains(m));
+        if (m == objetivo || parcial) {
+          dias.add(idx + 1);
+          break;
+        }
+      }
+    }
+
+    final lista = dias.toList()..sort();
+    return lista;
+  }
+
   /// Colores de materias para el display visual
   static Color colorMateria(String materia) {
     final m = materia.toLowerCase();

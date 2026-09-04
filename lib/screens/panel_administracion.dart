@@ -87,26 +87,8 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     },
   ];
 
-  final List<Map<String, dynamic>> _observacionesGestionClases = [
-    {
-      'id': '1',
-      'docente': 'Danilo Gomez',
-      'curso': '3° B - Matemática',
-      'fecha': '10/07/2026',
-      'observacion': 'Excelente manejo del pizarrón y recursos interactivos. Se sugiere profundizar en la ejercitación guiada del grupo que intensifica RITE.',
-      'archivo': 'Devolucion_Observacion_Clase_Gomez.pdf',
-      'subido_por': 'Directora (Maria Funes)',
-    },
-    {
-      'id': '2',
-      'docente': 'Laura Martinez',
-      'curso': '2° A - Prácticas del Lenguaje',
-      'fecha': '05/07/2026',
-      'observacion': 'Clase muy ordenada con alta participación de alumnos. Se revisaron acuerdos del contrato pedagógico y lectura adaptada con EOE.',
-      'archivo': 'Acta_Observacion_Aulica_2A.pdf',
-      'subido_por': 'Directora (Maria Funes)',
-    },
-  ];
+  /// Visitas áulicas registradas (usr_observaciones_aulicas)
+  List<Map<String, dynamic>> _observacionesGestionClases = [];
 
   final List<Map<String, dynamic>> _horariosActivosInstitucion = [
     {'curso_id': '1', 'curso': '1° A', 'dia': 'Lunes', 'modulo': '1° Módulo (07:30 - 08:50)', 'materia': 'Matemática', 'docente': 'Prof. Gomez', 'email': 'gomez@escuela.edu'},
@@ -285,11 +267,72 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
         _inicializarRepositorioYEOE();
       });
       await _cargarAsistenciaMensual();
+      await _cargarObservacionesAulicas();
     } catch (e) {
       _mostrarError('Error al cargar datos: $e');
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  /// Nombre del personal a partir de su auth_id (para mostrar en el historial).
+  String _nombrePersonalPorAuth(String? authId) {
+    if (authId == null) return 'Docente';
+    final p = _personal.firstWhere(
+      (x) => x['auth_id']?.toString() == authId,
+      orElse: () => <String, dynamic>{},
+    );
+    return (p['nombre_completo'] ?? p['email'] ?? 'Docente').toString();
+  }
+
+  String _fechaVisibleAdmin(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    final d = DateTime.tryParse(iso);
+    if (d == null) return iso;
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  }
+
+  /// Trae el historial de supervisión y lo adapta a las claves que usa la vista.
+  Future<void> _cargarObservacionesAulicas() async {
+    try {
+      final filas = await _supabaseService.obtenerTodasLasObservacionesAulicas();
+      if (!mounted) return;
+      setState(() {
+        _observacionesGestionClases = filas.map((o) {
+          final modulo = (o['modulo'] ?? '').toString();
+          final fecha = _fechaVisibleAdmin(o['fecha_visita']?.toString());
+          final leido = o['leido'] == true;
+          return {
+            'id': o['id'],
+            'docente_auth_id': o['docente_auth_id'],
+            'docente': _nombrePersonalPorAuth(o['docente_auth_id']?.toString()),
+            'curso': o['curso_texto'] ?? '',
+            'fecha': modulo.isEmpty ? fecha : '$fecha - $modulo',
+            'foco': o['foco'],
+            'observacion': o['observacion'] ?? '',
+            'acuerdos': o['acuerdos'] ?? '',
+            'subido_por': o['subido_por'] ?? 'Equipo Directivo',
+            'notificado': true,
+            'estado_lectura': leido
+                ? '✅ Leído por el docente'
+                : '🔔 Notificado al Docente (pendiente de lectura)',
+          };
+        }).toList();
+      });
+    } catch (e) {
+      print('Error al cargar el historial de supervisión: $e');
+    }
+  }
+
+  /// Abre un archivo del legajo docente (DDJJ, CV o certificado).
+  /// Se guardan en usr_archivos_personal como base64, no en Storage.
+  void _abrirArchivoLegajo(Map<String, dynamic> archivo) {
+    final base64Data = archivo['datos_base64'] as String?;
+    if (base64Data == null || base64Data.isEmpty) {
+      _mostrarError('El archivo no tiene contenido guardado.');
+      return;
+    }
+    PrintHelper.abrirArchivoWeb(base64Data);
   }
 
   void _mostrarError(String msg) {
@@ -856,8 +899,8 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                 padding: const EdgeInsets.all(28),
                 child: FutureBuilder<List<dynamic>>(
                   future: Future.wait([
-                    Supabase.instance.client.from('aca_trayectoria_alumnos').select('*').eq('alumno_id', alumnoId).order('anio_lectivo'),
-                    Supabase.instance.client.from('aca_materias_adeudadas').select('*').eq('alumno_id', alumnoId).order('anio_origen'),
+                    Supabase.instance.client.from('acad_trayectoria_alumno').select('*').eq('alumno_id', alumnoId).order('anio_lectivo'),
+                    Supabase.instance.client.from('acad_materias_adeudadas').select('*').eq('alumno_id', alumnoId).order('anio_origen'),
                   ]),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
@@ -968,7 +1011,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                                         TextButton(onPressed: () => Navigator.pop(cDialog), child: const Text('Cancelar')),
                                         ElevatedButton(
                                           onPressed: () async {
-                                            await Supabase.instance.client.from('aca_trayectoria_alumnos').insert({
+                                            await Supabase.instance.client.from('acad_trayectoria_alumno').insert({
                                               'alumno_id': alumnoId,
                                               'anio_lectivo': int.tryParse(anioCtrl.text) ?? DateTime.now().year,
                                               'curso_nombre': cursoCtrl.text.trim(),
@@ -1019,7 +1062,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                                     IconButton(
                                       icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
                                       onPressed: () async {
-                                        await Supabase.instance.client.from('aca_trayectoria_alumnos').delete().eq('id', t['id']);
+                                        await Supabase.instance.client.from('acad_trayectoria_alumno').delete().eq('id', t['id']);
                                         setModalState(() {});
                                       },
                                     ),
@@ -1084,7 +1127,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                                             style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange),
                                             onPressed: () async {
                                               if (matCtrl.text.isNotEmpty) {
-                                                await Supabase.instance.client.from('aca_materias_adeudadas').insert({
+                                                await Supabase.instance.client.from('acad_materias_adeudadas').insert({
                                                   'alumno_id': alumnoId,
                                                   'nombre_materia': matCtrl.text.trim(),
                                                   'anio_origen': int.tryParse(anioCtrl.text) ?? DateTime.now().year,
@@ -1156,7 +1199,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                                     IconButton(
                                       icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
                                       onPressed: () async {
-                                        await Supabase.instance.client.from('aca_materias_adeudadas').delete().eq('id', m['id']);
+                                        await Supabase.instance.client.from('acad_materias_adeudadas').delete().eq('adeudada_id', m['adeudada_id']);
                                         setModalState(() {});
                                       },
                                     ),
@@ -1388,10 +1431,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                   trailing: ddjj.isNotEmpty ? IconButton(
                     icon: const Icon(Icons.download_rounded, color: Colors.blue),
                     tooltip: 'Descargar DDJJ',
-                    onPressed: () {
-                      final url = Supabase.instance.client.storage.from('repositorio_institucional').getPublicUrl(ddjj.first['url_archivo']);
-                      _mostrarExito('Enlace generado para descarga: $url');
-                    },
+                    onPressed: () => _abrirArchivoLegajo(ddjj.first),
                   ) : null,
                 ),
                 ListTile(
@@ -1402,10 +1442,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                   trailing: cv.isNotEmpty ? IconButton(
                     icon: const Icon(Icons.download_rounded, color: Colors.blue),
                     tooltip: 'Descargar CV',
-                    onPressed: () {
-                      final url = Supabase.instance.client.storage.from('repositorio_institucional').getPublicUrl(cv.first['url_archivo']);
-                      _mostrarExito('Enlace generado para descarga: $url');
-                    },
+                    onPressed: () => _abrirArchivoLegajo(cv.first),
                   ) : null,
                 ),
                 ListTile(
@@ -3488,13 +3525,26 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
   }
 
   void _abrirModalSubirObservacionClaseDirectiva() {
-    String selectedDocente = 'Danilo Gomez';
+    // Docentes reales de la institución: la observación se guarda contra el
+    // auth_id del docente para que le aparezca en su perfil.
+    final docentes = _personal
+        .where((d) => (d['auth_id'] ?? '').toString().isNotEmpty)
+        .toList();
+
+    if (docentes.isEmpty) {
+      _mostrarError('No hay personal cargado para registrar una observación.');
+      return;
+    }
+
+    String? selectedDocenteAuthId = docentes.first['auth_id'].toString();
     String selectedFoco = 'Estrategias Didácticas y Clima Áulico';
-    final cursoCtrl = TextEditingController(text: '3° B - Matemática');
+    DateTime fechaVisita = DateTime.now();
+    final cursoCtrl = TextEditingController();
+    final moduloCtrl = TextEditingController(text: '2° Módulo');
     final obsCtrl = TextEditingController();
     final acuerdosCtrl = TextEditingController();
-    final fechaCtrl = TextEditingController(text: '${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year} - 2° Módulo');
     bool notificarDocente = true;
+    bool guardando = false;
 
     showDialog(
       context: context,
@@ -3526,12 +3576,20 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                   const Text('Registrá cada clase que visitás u observás, adjuntá el acta o devolución y envíala como notificación directa al portal del docente.', style: TextStyle(fontSize: 13, color: Colors.black54)),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: selectedDocente,
+                    value: selectedDocenteAuthId,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Docente Observado', border: OutlineInputBorder(), prefixIcon: Icon(Icons.person_rounded)),
-                    items: ['Danilo Gomez', 'Laura Martinez', 'Carla Lopez', 'Sofia Benitez', 'Maria Funes', 'Docente Suplente']
-                        .map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontWeight: FontWeight.w600))))
+                    items: docentes
+                        .map((d) => DropdownMenuItem(
+                              value: d['auth_id'].toString(),
+                              child: Text(
+                                (d['nombre_completo'] ?? d['email'] ?? 'Docente').toString(),
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ))
                         .toList(),
-                    onChanged: (v) => setModalState(() => selectedDocente = v!),
+                    onChanged: (v) => setModalState(() => selectedDocenteAuthId = v),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -3546,12 +3604,39 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                       const SizedBox(width: 12),
                       Expanded(
                         flex: 2,
-                        child: TextField(
-                          controller: fechaCtrl,
-                          decoration: const InputDecoration(labelText: 'Fecha y Módulo', border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_today_rounded)),
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: fechaVisita,
+                              firstDate: DateTime(DateTime.now().year - 1),
+                              lastDate: DateTime(DateTime.now().year + 1, 12, 31),
+                            );
+                            if (picked != null) setModalState(() => fechaVisita = picked);
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                                labelText: 'Fecha de la visita',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.calendar_today_rounded)),
+                            child: Text(
+                              '${fechaVisita.day.toString().padLeft(2, '0')}/'
+                              '${fechaVisita.month.toString().padLeft(2, '0')}/${fechaVisita.year}',
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          ),
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: moduloCtrl,
+                    decoration: const InputDecoration(
+                        labelText: 'Módulo / Hora',
+                        hintText: 'Ej. 2° Módulo',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.schedule_rounded)),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
@@ -3589,38 +3674,6 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                     ),
                   ),
                   const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.deepPurple.shade50, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.deepPurple.shade200)),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 28),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Acta_Supervision_${selectedDocente.replaceAll(" ", "_")}.pdf',
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.deepPurple),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const Text('Documento firmado o planilla de visita adjunta automáticamente', style: TextStyle(fontSize: 11, color: Colors.black54)),
-                            ],
-                          ),
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('📎 Seleccionando archivo PDF / Imagen desde el dispositivo...')));
-                          },
-                          icon: const Icon(Icons.attach_file_rounded, size: 16),
-                          label: const Text('Adjuntar'),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.deepPurple, elevation: 0),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
                   CheckboxListTile(
                     value: notificarDocente,
                     onChanged: (val) => setModalState(() => notificarDocente = val ?? true),
@@ -3638,41 +3691,64 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
-              icon: const Icon(Icons.send_rounded),
+              icon: guardando
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.send_rounded),
               label: const Text('Registrar y Notificar al Docente'),
-              onPressed: () {
-                if (obsCtrl.text.trim().isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Por favor completá el registro de lo observado durante la clase.')));
-                  return;
-                }
-                setState(() {
-                  _observacionesGestionClases.insert(0, {
-                    'id': DateTime.now().millisecondsSinceEpoch.toString(),
-                    'docente': selectedDocente,
-                    'curso': cursoCtrl.text.trim(),
-                    'fecha': fechaCtrl.text.trim(),
-                    'foco': selectedFoco,
-                    'observacion': obsCtrl.text.trim(),
-                    'acuerdos': agreementsOrDefault(acuerdosCtrl.text.trim()),
-                    'archivo': 'Acta_Supervision_${selectedDocente.replaceAll(" ", "_")}.pdf',
-                    'subido_por': 'Directora (Maria Funes)',
-                    'notificado': notificarDocente,
-                    'estado_lectura': notificarDocente ? '🔔 Notificado al Docente (Pendiente de confirmación)' : '🗃️ Registro Interno de Dirección',
-                  });
-                });
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      notificarDocente
-                          ? '✅ Visita áulica guardada en el Portal Directivo. Se ha enviado la notificación pedagógica y el acta al Prof. $selectedDocente.'
-                          : '✅ Visita áulica guardada en el Portal Directivo exitosamente.',
-                    ),
-                    backgroundColor: Colors.green.shade700,
-                    duration: const Duration(seconds: 4),
-                  ),
-                );
-              },
+              onPressed: guardando
+                  ? null
+                  : () async {
+                      if (obsCtrl.text.trim().isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('⚠️ Por favor completá el registro de lo observado durante la clase.')));
+                        return;
+                      }
+                      if (selectedDocenteAuthId == null) return;
+
+                      setModalState(() => guardando = true);
+                      final docente = docentes.firstWhere(
+                        (d) => d['auth_id'].toString() == selectedDocenteAuthId,
+                        orElse: () => <String, dynamic>{},
+                      );
+
+                      try {
+                        await _supabaseService.registrarObservacionAulica(
+                          docenteAuthId: selectedDocenteAuthId!,
+                          docenteId: docente['docente_id']?.toString(),
+                          docenteNombre: docente['nombre_completo']?.toString(),
+                          cursoTexto: cursoCtrl.text.trim(),
+                          fechaVisita: fechaVisita,
+                          modulo: moduloCtrl.text.trim(),
+                          foco: selectedFoco,
+                          observacion: obsCtrl.text.trim(),
+                          acuerdos: agreementsOrDefault(acuerdosCtrl.text.trim()),
+                          notificarDocente: notificarDocente,
+                        );
+
+                        if (!mounted) return;
+                        Navigator.pop(context);
+                        await _cargarObservacionesAulicas();
+
+                        if (!mounted) return;
+                        final nombre = (docente['nombre_completo'] ?? 'el docente').toString();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(notificarDocente
+                                ? '✅ Visita áulica guardada. Se notificó la devolución a $nombre.'
+                                : '✅ Visita áulica guardada como registro interno de Dirección.'),
+                            backgroundColor: Colors.green.shade700,
+                            duration: const Duration(seconds: 4),
+                          ),
+                        );
+                      } catch (e) {
+                        setModalState(() => guardando = false);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error al registrar la observación: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      }
+                    },
             ),
           ],
         ),
@@ -3897,40 +3973,18 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                           ),
                         ],
                         const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 12,
+                          runSpacing: 8,
                           children: [
-                            Row(
-                              children: [
-                                Chip(
-                                  avatar: const Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 18),
-                                  label: Text(obs['archivo'] ?? 'Acta_Observacion.pdf', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                  backgroundColor: Colors.white,
-                                  side: BorderSide(color: Colors.grey.shade300),
-                                ),
-                                const SizedBox(width: 12),
-                                Text('Registrado por: ${obs['subido_por'] ?? "Directora Maria Funes"}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                              ],
-                            ),
-                            Row(
-                              children: [
-                                OutlinedButton.icon(
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('🔔 Reenviando notificación push y correo con acta al Prof. ${obs['docente']}...')));
-                                  },
-                                  icon: const Icon(Icons.send_to_mobile_rounded, size: 16),
-                                  label: const Text('Reenviar Notificación'),
-                                ),
-                                const SizedBox(width: 10),
-                                ElevatedButton.icon(
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('📄 Abriendo/Descargando acta ${obs['archivo']}...')));
-                                  },
-                                  icon: const Icon(Icons.visibility_rounded, size: 16),
-                                  label: const Text('Ver Acta Completa'),
-                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple.shade50, foregroundColor: Colors.deepPurple, elevation: 0),
-                                ),
-                              ],
+                            Text('Registrado por: ${obs['subido_por'] ?? "Equipo Directivo"}',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            OutlinedButton.icon(
+                              onPressed: () => _reenviarNotificacionObservacion(obs),
+                              icon: const Icon(Icons.send_to_mobile_rounded, size: 16),
+                              label: const Text('Reenviar Notificación'),
                             ),
                           ],
                         ),
@@ -3943,6 +3997,33 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
         ],
       ),
     );
+  }
+
+  /// Vuelve a avisar al docente que tiene una devolución pendiente de leer.
+  Future<void> _reenviarNotificacionObservacion(Map<String, dynamic> obs) async {
+    final authId = obs['docente_auth_id']?.toString();
+    if (authId == null || authId.isEmpty) {
+      _mostrarError('La observación no tiene un docente asociado.');
+      return;
+    }
+    try {
+      await _supabaseService.notificarSistema(
+        asunto: 'Recordatorio: Devolución de Observación Áulica',
+        texto: 'Tenés una devolución pedagógica pendiente de lectura'
+            '${(obs['curso'] ?? '').toString().isNotEmpty ? ' de ${obs['curso']}' : ''}. '
+            'Podés verla en Mi Perfil > Observaciones de Clases.',
+        destinatariosAuthIds: [authId],
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Notificación reenviada a ${obs['docente'] ?? 'el docente'}.'),
+          backgroundColor: Colors.green.shade700,
+        ),
+      );
+    } catch (e) {
+      _mostrarError('No se pudo reenviar la notificación: $e');
+    }
   }
 
   Widget _buildKpiDirectivoCard({required String title, required String value, required IconData icon, required Color color}) {

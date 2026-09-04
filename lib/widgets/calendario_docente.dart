@@ -61,31 +61,39 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
       }
       _cursos = cursosMap.values.toList();
 
-      // 2. Cargar eventos de todos los cursos
-      final Map<String, List<Map<String, dynamic>>> nuevosEventos = {};
+      // 2. Cargar eventos de todos los cursos.
+      // obtenerCalendarioPorCurso() devuelve los eventos del curso Y los generales
+      // (curso_id null), así que un evento general vuelve una vez por cada curso del
+      // docente. Se deduplica por id antes de armar el mapa por día.
+      final Map<String, Map<String, dynamic>> eventosUnicos = {};
+
+      void registrar(Map<String, dynamic> e, String nombreCurso) {
+        // La PK de acad_calendario es evento_id (se deja 'id' como respaldo).
+        final id = (e['evento_id'] ?? e['id'])?.toString();
+        final clave = id ?? '${e['fecha']}|${e['titulo']}|${e['curso_id']}';
+        if (eventosUnicos.containsKey(clave)) return;
+        eventosUnicos[clave] = {...e, '_curso_nombre': nombreCurso};
+      }
+
       for (final curso in _cursos) {
-        final eventos = await _service.obtenerCalendarioPorCurso(curso['curso_id'] as String, soloPublicos: false);
+        final cursoId = curso['curso_id'] as String;
+        final eventos = await _service.obtenerCalendarioPorCurso(cursoId, soloPublicos: false);
         for (final e in eventos) {
-          final fecha = (e['fecha'] as String).substring(0, 10);
-          nuevosEventos.putIfAbsent(fecha, () => []).add({
-            ...e,
-            '_curso_nombre': curso['nombre'],
-          });
+          final esGeneral = e['curso_id'] == null;
+          registrar(e, esGeneral ? 'General' : (curso['nombre']?.toString() ?? 'Curso'));
         }
       }
 
       // También cargar eventos generales (sin curso)
       final generales = await _service.obtenerCalendarioPorCurso(null, soloPublicos: false);
       for (final e in generales) {
+        registrar(e, 'General');
+      }
+
+      final Map<String, List<Map<String, dynamic>>> nuevosEventos = {};
+      for (final e in eventosUnicos.values) {
         final fecha = (e['fecha'] as String).substring(0, 10);
-        final clave = fecha;
-        if (!nuevosEventos.containsKey(clave) ||
-            !nuevosEventos[clave]!.any((ev) => ev['id'] == e['id'])) {
-          nuevosEventos.putIfAbsent(clave, () => []).add({
-            ...e,
-            '_curso_nombre': 'General',
-          });
-        }
+        nuevosEventos.putIfAbsent(fecha, () => []).add(e);
       }
 
       if (mounted) {

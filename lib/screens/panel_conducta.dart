@@ -59,13 +59,26 @@ class _PanelConductaState extends State<PanelConducta> {
     }
   }
 
+  /// Cursos en los que está inscripto el alumno de una incidencia.
+  /// curso_id vive en acad_inscripciones, no dentro de acad_cursos.
+  List<String> _cursosDeIncidencia(Map<String, dynamic> item) {
+    final alumno = item['usr_legajo_alumno'] as Map<String, dynamic>?;
+    final inscs = alumno?['acad_inscripciones'] as List?;
+    if (inscs == null) return const [];
+    return inscs
+        .map((i) => (i is Map ? (i['curso_id'] ?? i['acad_cursos']?['curso_id']) : null)?.toString())
+        .whereType<String>()
+        .toList();
+  }
+
   void _filtrarIncidencias() {
     setState(() {
       _incidenciasFiltradas = _incidencias.where((item) {
         final tipo = (item['tipo_incidencia'] ?? '').toString().toLowerCase();
         final desc = (item['descripcion'] ?? '').toString().toLowerCase();
-        final isDailyConduct = tipo == 'bien' || tipo == 'más o menos' || tipo == 'mal' || desc.contains('conducta diaria:');
-        
+        final isDailyConduct = tipo == 'bien' || tipo == 'regular' || tipo == 'más o menos' ||
+            tipo == 'mal' || desc.contains('conducta diaria:');
+
         if (_mostrarConductaDiaria != isDailyConduct) {
           return false;
         }
@@ -73,16 +86,14 @@ class _PanelConductaState extends State<PanelConducta> {
         final alumno = item['usr_legajo_alumno'] as Map<String, dynamic>?;
         final demo = alumno?['datos_demograficos'] as Map<String, dynamic>?;
         final nombreAlumno = '${demo?['apellido'] ?? ''} ${demo?['nombre'] ?? ''}'.toLowerCase();
-        
+
         final inscs = alumno?['acad_inscripciones'] as List?;
-        final cursoNombre = (inscs != null && inscs.isNotEmpty) 
+        final cursoNombre = (inscs != null && inscs.isNotEmpty)
             ? (inscs.first['acad_cursos']?['identificador_division']?.toString() ?? '').toLowerCase()
             : '';
 
-        final incidentCursoId = (inscs != null && inscs.isNotEmpty)
-            ? (inscs.first['acad_cursos']?['curso_id'])
-            : null;
-        final matchesCurso = _filterCursoId == null || incidentCursoId == _filterCursoId;
+        final matchesCurso =
+            _filterCursoId == null || _cursosDeIncidencia(item).contains(_filterCursoId);
 
         final matchesSearch = nombreAlumno.contains(_searchText.toLowerCase()) ||
             cursoNombre.contains(_searchText.toLowerCase()) ||
@@ -343,11 +354,61 @@ class _PanelConductaState extends State<PanelConducta> {
     );
   }
 
+  /// Muestra las fechas como dd/mm/aaaa (la base las devuelve en ISO).
+  String _formatearFecha(String valor) {
+    if (valor.isEmpty) return '';
+    final d = DateTime.tryParse(valor);
+    if (d == null) return valor;
+    final fecha = '${d.day.toString().padLeft(2, '0')}/'
+        '${d.month.toString().padLeft(2, '0')}/${d.year}';
+    if (valor.length <= 10) return fecha;
+    return '$fecha ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// Estado de una fila de conducta diaria: Bien / Regular / Mal.
+  String _estadoConductaDiaria(Map<String, dynamic> item) {
+    final tipo = (item['tipo_incidencia'] ?? '').toString().toLowerCase();
+    if (tipo == 'bien') return 'Bien';
+    if (tipo == 'regular' || tipo == 'más o menos' || tipo == 'mas o menos') return 'Regular';
+    if (tipo == 'mal') return 'Mal';
+    final desc = (item['descripcion'] ?? '').toString().toLowerCase();
+    if (desc.contains('conducta diaria: mal')) return 'Mal';
+    if (desc.contains('conducta diaria: regular')) return 'Regular';
+    return 'Bien';
+  }
+
+  Color _colorEstadoConducta(String estado) {
+    switch (estado) {
+      case 'Mal':
+        return Colors.red.shade700;
+      case 'Regular':
+        return Colors.orange.shade800;
+      default:
+        return Colors.green.shade700;
+    }
+  }
+
   Widget _buildMetricsCard(ColorScheme colorScheme) {
     final total = _incidenciasFiltradas.length;
-    final leves = _incidenciasFiltradas.where((item) => (item['severidad'] ?? '').toString().toUpperCase() == 'LEVE').length;
-    final graves = _incidenciasFiltradas.where((item) => (item['severidad'] ?? '').toString().toUpperCase() == 'GRAVE').length;
-    final gravisimas = _incidenciasFiltradas.where((item) => (item['severidad'] ?? '').toString().toUpperCase() == 'GRAVÍSIMA' || (item['severidad'] ?? '').toString().toUpperCase() == 'MODERADA').length;
+
+    final int primera, segunda, tercera;
+    final String labelPrimera, labelSegunda, labelTercera;
+    if (_mostrarConductaDiaria) {
+      primera = _incidenciasFiltradas.where((i) => _estadoConductaDiaria(i) == 'Bien').length;
+      segunda = _incidenciasFiltradas.where((i) => _estadoConductaDiaria(i) == 'Regular').length;
+      tercera = _incidenciasFiltradas.where((i) => _estadoConductaDiaria(i) == 'Mal').length;
+      labelPrimera = 'Bien';
+      labelSegunda = 'Regular';
+      labelTercera = 'Mal';
+    } else {
+      primera = _incidenciasFiltradas.where((item) => (item['severidad'] ?? '').toString().toUpperCase() == 'LEVE').length;
+      segunda = _incidenciasFiltradas.where((item) => (item['severidad'] ?? '').toString().toUpperCase() == 'GRAVE').length;
+      tercera = _incidenciasFiltradas.where((item) => (item['severidad'] ?? '').toString().toUpperCase() == 'GRAVÍSIMA' || (item['severidad'] ?? '').toString().toUpperCase() == 'MODERADA').length;
+      labelPrimera = 'Leves';
+      labelSegunda = 'Graves';
+      labelTercera = 'Muy Graves';
+    }
+    final leves = primera, graves = segunda, gravisimas = tercera;
 
     return Card(
       elevation: 0,
@@ -362,17 +423,19 @@ class _PanelConductaState extends State<PanelConducta> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Estadísticas de Conducta del Período',
+              _mostrarConductaDiaria
+                  ? 'Registros de Conducta Diaria'
+                  : 'Estadísticas de Conducta del Período',
               style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary, fontSize: 15),
             ),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildStatItem('Total', total.toString(), Colors.blue, colorScheme),
-                _buildStatItem('Leves', leves.toString(), Colors.green, colorScheme),
-                _buildStatItem('Graves', graves.toString(), Colors.orange, colorScheme),
-                _buildStatItem('Muy Graves', gravisimas.toString(), Colors.red, colorScheme),
+                Expanded(child: _buildStatItem('Total', total.toString(), Colors.blue, colorScheme)),
+                Expanded(child: _buildStatItem(labelPrimera, primera.toString(), Colors.green, colorScheme)),
+                Expanded(child: _buildStatItem(labelSegunda, segunda.toString(), Colors.orange, colorScheme)),
+                Expanded(child: _buildStatItem(labelTercera, tercera.toString(), Colors.red, colorScheme)),
               ],
             ),
             if (total > 0) ...[
@@ -419,6 +482,9 @@ class _PanelConductaState extends State<PanelConducta> {
         const SizedBox(height: 2),
         Text(
           label,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
         ),
       ],
@@ -428,35 +494,56 @@ class _PanelConductaState extends State<PanelConducta> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final esMovil = MediaQuery.of(context).size.width < 600;
 
     return Scaffold(
       appBar: AppBar(
         leading: AppDrawer.buildLeading(context),
         leadingWidth: AppDrawer.buildLeadingWidth(context),
-        title: const Text('Módulo de Conducta', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Módulo de Conducta',
+            style: TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
         elevation: 0,
         scrolledUnderElevation: 1,
         actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-            child: ElevatedButton.icon(
+          // En pantallas chicas el botón con texto se comía toda la barra
+          // (y tapaba el título), así que se muestra sólo el ícono.
+          if (esMovil)
+            IconButton(
               onPressed: _abrirSeleccionConductaDiaria,
-              icon: const Icon(Icons.today_rounded, size: 16),
-              label: const Text('Conducta Diaria (30% RITE)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              style: ElevatedButton.styleFrom(
+              icon: const Icon(Icons.today_rounded),
+              tooltip: 'Registrar Conducta Diaria (30% RITE)',
+              style: IconButton.styleFrom(
                 backgroundColor: colorScheme.primary,
                 foregroundColor: colorScheme.onPrimary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              child: ElevatedButton.icon(
+                onPressed: _abrirSeleccionConductaDiaria,
+                icon: const Icon(Icons.today_rounded, size: 16),
+                label: const Text('Conducta Diaria (30% RITE)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colorScheme.primary,
+                  foregroundColor: colorScheme.onPrimary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
               ),
             ),
-          ),
+          const SizedBox(width: 8),
         ],
       ),
       drawer: const AppDrawer(),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _abrirModalNuevaIncidencia,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Nueva Incidencia', style: TextStyle(fontWeight: FontWeight.bold)),
+        onPressed: _mostrarConductaDiaria
+            ? _abrirSeleccionConductaDiaria
+            : _abrirModalNuevaIncidencia,
+        icon: Icon(_mostrarConductaDiaria ? Icons.today_rounded : Icons.add_rounded),
+        label: Text(
+          _mostrarConductaDiaria ? 'Tomar Conducta del Día' : 'Nueva Incidencia',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
       body: Column(
         children: [
@@ -471,16 +558,20 @@ class _PanelConductaState extends State<PanelConducta> {
               children: [
                 Expanded(
                   child: SegmentedButton<bool>(
-                    segments: const [
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                    segments: [
                       ButtonSegment<bool>(
                         value: false,
-                        icon: Icon(Icons.gavel_rounded),
-                        label: Text('Incidencias de Disciplina'),
+                        icon: const Icon(Icons.gavel_rounded, size: 18),
+                        label: Text(esMovil ? 'Incidencias' : 'Incidencias de Disciplina',
+                            style: const TextStyle(fontSize: 12)),
                       ),
                       ButtonSegment<bool>(
                         value: true,
-                        icon: Icon(Icons.today_rounded),
-                        label: Text('Conducta Diaria'),
+                        icon: const Icon(Icons.today_rounded, size: 18),
+                        label: Text(esMovil ? 'Diaria' : 'Conducta Diaria',
+                            style: const TextStyle(fontSize: 12)),
                       ),
                     ],
                     selected: {_mostrarConductaDiaria},
@@ -509,56 +600,71 @@ class _PanelConductaState extends State<PanelConducta> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    // Barra de Búsqueda y Dropdown de Curso
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: TextField(
-                            decoration: InputDecoration(
-                              hintText: _mostrarConductaDiaria 
-                                  ? 'Buscar por alumno o comentario...'
-                                  : 'Buscar por alumno o tipo...',
-                              prefixIcon: const Icon(Icons.search_rounded),
-                              border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
-                            ),
-                            onChanged: (val) {
-                              setState(() => _searchText = val);
-                              _filtrarIncidencias();
-                            },
-                          ),
+                    // Barra de Búsqueda y Dropdown de Curso.
+                    // En celular van apilados: en una sola fila el buscador y el
+                    // curso quedaban ilegibles.
+                    Builder(builder: (context) {
+                      final buscador = TextField(
+                        decoration: InputDecoration(
+                          isDense: true,
+                          hintText: _mostrarConductaDiaria
+                              ? 'Buscar por alumno o comentario...'
+                              : 'Buscar por alumno o tipo...',
+                          prefixIcon: const Icon(Icons.search_rounded),
+                          border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 1,
-                          child: DropdownButtonFormField<String>(
-                            value: _filterCursoId,
-                            decoration: const InputDecoration(
-                              labelText: 'Curso',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
-                            ),
-                            items: [
-                              const DropdownMenuItem<String>(
-                                value: null,
-                                child: Text('Todos'),
-                              ),
-                              ..._cursos.map((c) {
-                                return DropdownMenuItem<String>(
-                                  value: c['curso_id'] as String,
-                                  child: Text(c['identificador_division'] as String),
-                                );
-                              }),
-                            ],
-                            onChanged: (val) {
-                              setState(() {
-                                _filterCursoId = val;
-                              });
-                              _filtrarIncidencias();
-                            },
-                          ),
+                        onChanged: (val) {
+                          setState(() => _searchText = val);
+                          _filtrarIncidencias();
+                        },
+                      );
+
+                      final selectorCurso = DropdownButtonFormField<String>(
+                        value: _filterCursoId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          labelText: 'Curso',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
                         ),
-                      ],
-                    ),
+                        items: [
+                          const DropdownMenuItem<String>(
+                            value: null,
+                            child: Text('Todos los cursos'),
+                          ),
+                          ..._cursos.map((c) {
+                            return DropdownMenuItem<String>(
+                              value: c['curso_id'] as String,
+                              child: Text((c['identificador_division'] ?? 'Curso').toString(),
+                                  overflow: TextOverflow.ellipsis),
+                            );
+                          }),
+                        ],
+                        onChanged: (val) {
+                          setState(() {
+                            _filterCursoId = val;
+                          });
+                          _filtrarIncidencias();
+                        },
+                      );
+
+                      if (esMovil) {
+                        return Column(
+                          children: [
+                            buscador,
+                            const SizedBox(height: 10),
+                            selectorCurso,
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(flex: 2, child: buscador),
+                          const SizedBox(width: 12),
+                          Expanded(flex: 1, child: selectorCurso),
+                        ],
+                      );
+                    }),
                     if (!_mostrarConductaDiaria) ...[
                       const SizedBox(height: 12),
                       // Chips de Severidad
@@ -599,10 +705,29 @@ class _PanelConductaState extends State<PanelConducta> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _incidenciasFiltradas.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No se encontraron incidencias de conducta.',
-                          style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _mostrarConductaDiaria
+                                    ? Icons.event_available_rounded
+                                    : Icons.gavel_rounded,
+                                size: 52,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                _mostrarConductaDiaria
+                                    ? 'Todavía no hay conducta diaria registrada para este filtro.\nUsá el botón de arriba para tomar la conducta del día.'
+                                    : 'No se encontraron incidencias de conducta.',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                              ),
+                            ],
+                          ),
                         ),
                       )
                     : ListView.builder(
@@ -623,13 +748,30 @@ class _PanelConductaState extends State<PanelConducta> {
                               : 'Sin curso';
 
                           final tipo = item['tipo_incidencia'] as String? ?? 'Incidencia';
-                          final sev = item['severidad'] as String? ?? 'Leve';
                           final desc = item['descripcion'] as String? ?? '';
-                          final fecha = item['fecha'] as String? ?? '';
+                          final fecha = _formatearFecha(item['fecha'] as String? ?? '');
 
-                          Color colorSev = Colors.blue;
-                          if (sev == 'Grave') colorSev = Colors.orange.shade800;
-                          if (sev == 'Gravísima') colorSev = Colors.red.shade800;
+                          // En conducta diaria la etiqueta útil es el estado
+                          // (Bien / Regular / Mal), no la severidad interna.
+                          final String sev = _mostrarConductaDiaria
+                              ? _estadoConductaDiaria(item)
+                              : (item['severidad'] as String? ?? 'Leve');
+
+                          Color colorSev;
+                          if (_mostrarConductaDiaria) {
+                            colorSev = _colorEstadoConducta(sev);
+                          } else {
+                            colorSev = Colors.blue;
+                            if (sev == 'Grave') colorSev = Colors.orange.shade800;
+                            if (sev == 'Gravísima') colorSev = Colors.red.shade800;
+                          }
+
+                          // "Conducta diaria: Regular — llegó tarde" → sólo el comentario
+                          final textoDetalle = _mostrarConductaDiaria
+                              ? (desc.contains('—')
+                                  ? desc.split('—').sublist(1).join('—').trim()
+                                  : 'Sin observaciones')
+                              : '$tipo: $desc';
 
                           return Card(
                             elevation: 0,
@@ -677,7 +819,7 @@ class _PanelConductaState extends State<PanelConducta> {
                                   ),
                                   const Divider(height: 20),
                                   Text(
-                                    '$tipo: $desc',
+                                    textoDetalle,
                                     style: const TextStyle(fontSize: 13, height: 1.3),
                                   ),
                                   if (fecha.isNotEmpty) ...[

@@ -50,6 +50,15 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, FocusNode> _focusNodes = {};
 
+  // La planilla se arma con dos tablas: una fija con los nombres y otra que se
+  // desplaza en horizontal con las notas. Las alturas deben coincidir para que
+  // las filas queden alineadas.
+  static const double _kAlturaEncabezado = 68.0;
+  static const double _kAlturaFila = 52.0;
+
+  final ScrollController _scrollVertical = ScrollController();
+  final ScrollController _scrollHorizontal = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -64,7 +73,68 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
     for (final node in _focusNodes.values) {
       node.dispose();
     }
+    _scrollVertical.dispose();
+    _scrollHorizontal.dispose();
     super.dispose();
+  }
+
+  /// Columna fija con el nombre de cada alumno.
+  Widget _buildColumnaAlumnosFija(ColorScheme colorScheme) {
+    final anchoPantalla = MediaQuery.of(context).size.width;
+    final ancho = anchoPantalla < 500 ? 132.0 : (anchoPantalla < 900 ? 168.0 : 210.0);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(right: BorderSide(color: colorScheme.outlineVariant)),
+      ),
+      child: DataTable(
+        headingRowColor: WidgetStateProperty.all(colorScheme.surfaceContainerHighest.withAlpha(128)),
+        headingRowHeight: _kAlturaEncabezado,
+        dataRowMinHeight: _kAlturaFila,
+        dataRowMaxHeight: _kAlturaFila,
+        columnSpacing: 0,
+        horizontalMargin: 10.0,
+        columns: [
+          DataColumn(
+            label: SizedBox(
+              width: ancho,
+              child: const Text('Alumno', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+        rows: _alumnos.map((alumno) {
+          return DataRow(
+            cells: [
+              DataCell(
+                SizedBox(
+                  width: ancho,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          alumno.nombre,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.description_outlined, size: 16, color: Colors.blueGrey),
+                        tooltip: 'Ver Boletín General de ${alumno.nombre}',
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        onPressed: () => _mostrarDialogoImpresion(alumnoEspecifico: alumno),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        }).toList(),
+      ),
+    );
   }
 
   Future<void> _inicializarDatos() async {
@@ -337,16 +407,28 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
         return StatefulBuilder(
           builder: (builderContext, setModalState) {
             final fechaStr = "${selectedFecha.day.toString().padLeft(2, '0')}/${selectedFecha.month.toString().padLeft(2, '0')}/${selectedFecha.year}";
+            final anchoPantalla = MediaQuery.of(builderContext).size.width;
+            final anchoDialogo = anchoPantalla < 560 ? anchoPantalla - 64 : 480.0;
             return AlertDialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
               title: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(Icons.add_task_rounded, color: Colors.blueAccent),
                   SizedBox(width: 12),
-                  Text('Nueva Nota / Calificación', style: TextStyle(fontWeight: FontWeight.bold)),
+                  // Expanded para que el título se acomode y no se corte
+                  Expanded(
+                    child: Text('Nueva Nota / Calificación',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  ),
                 ],
               ),
-              content: SingleChildScrollView(
+              content: SizedBox(
+                width: anchoDialogo,
+                child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -407,14 +489,15 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.calendar_today_rounded, size: 20, color: Colors.blueGrey),
-                                const SizedBox(width: 10),
-                                Text('Fecha de Evaluación: $fechaStr', style: const TextStyle(fontWeight: FontWeight.w600)),
-                              ],
+                            const Icon(Icons.calendar_today_rounded, size: 20, color: Colors.blueGrey),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Fecha: $fechaStr',
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
                             ),
                             const Icon(Icons.edit_calendar_rounded, color: Colors.blue),
                           ],
@@ -563,7 +646,9 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                     ],
                   ],
                 ),
+                ),
               ),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(builderContext).pop(),
@@ -1036,17 +1121,30 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
           builder: (context, setModalState) {
             double totalPeso = pesoExamen + pesoTrabajos + pesoParticipacion;
 
+            final anchoPantalla = MediaQuery.of(context).size.width;
+            final esMovil = anchoPantalla < 620;
+            // El ancho tiene que descontar el insetPadding del diálogo; con
+            // width * 0.85 el contenido no entraba y se recortaba.
+            final anchoDialogo = esMovil ? anchoPantalla - 64 : 560.0;
+
             return AlertDialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(Icons.auto_awesome_rounded, color: Colors.purple),
                   SizedBox(width: 8),
-                  Text('Asistente de Rúbrica Pedagógica'),
+                  Expanded(
+                    child: Text('Asistente de Rúbrica Pedagógica',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  ),
                 ],
               ),
               content: SizedBox(
-                width: MediaQuery.of(context).size.width * 0.85,
+                width: anchoDialogo,
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1057,38 +1155,27 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                       ),
                       const SizedBox(height: 12),
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: TextFormField(
-                              initialValue: pesoExamen.toString(),
-                              decoration: const InputDecoration(labelText: 'Examen (%)'),
-                              keyboardType: TextInputType.number,
-                              onChanged: (val) {
-                                setModalState(() => pesoExamen = double.tryParse(val) ?? 0.0);
-                              },
-                            ),
+                          _campoRubrica(
+                            etiqueta: 'Examen (%)',
+                            valorInicial: pesoExamen.toString(),
+                            onChanged: (val) =>
+                                setModalState(() => pesoExamen = double.tryParse(val) ?? 0.0),
                           ),
                           const SizedBox(width: 8),
-                          Expanded(
-                            child: TextFormField(
-                              initialValue: pesoTrabajos.toString(),
-                              decoration: const InputDecoration(labelText: 'Trabajos (%)'),
-                              keyboardType: TextInputType.number,
-                              onChanged: (val) {
-                                setModalState(() => pesoTrabajos = double.tryParse(val) ?? 0.0);
-                              },
-                            ),
+                          _campoRubrica(
+                            etiqueta: 'Trabajos (%)',
+                            valorInicial: pesoTrabajos.toString(),
+                            onChanged: (val) =>
+                                setModalState(() => pesoTrabajos = double.tryParse(val) ?? 0.0),
                           ),
                           const SizedBox(width: 8),
-                          Expanded(
-                            child: TextFormField(
-                              initialValue: pesoParticipacion.toString(),
-                              decoration: const InputDecoration(labelText: 'Participación (%)'),
-                              keyboardType: TextInputType.number,
-                              onChanged: (val) {
-                                setModalState(() => pesoParticipacion = double.tryParse(val) ?? 0.0);
-                              },
-                            ),
+                          _campoRubrica(
+                            etiqueta: 'Particip. (%)',
+                            valorInicial: pesoParticipacion.toString(),
+                            onChanged: (val) =>
+                                setModalState(() => pesoParticipacion = double.tryParse(val) ?? 0.0),
                           ),
                         ],
                       ),
@@ -1155,54 +1242,61 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                 ),
                                 const SizedBox(height: 6),
                                 Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      child: TextFormField(
-                                        initialValue: currentEx.toString(),
-                                        decoration: const InputDecoration(labelText: 'Examen', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
-                                        keyboardType: TextInputType.number,
-                                        onChanged: (val) {
-                                          notaExamen[student.id] = double.tryParse(val) ?? 0.0;
-                                          setModalState(() {});
-                                        },
-                                      ),
+                                    _campoRubrica(
+                                      etiqueta: 'Examen',
+                                      valorInicial: currentEx.toString(),
+                                      onChanged: (val) {
+                                        notaExamen[student.id] = double.tryParse(val) ?? 0.0;
+                                        setModalState(() {});
+                                      },
                                     ),
                                     const SizedBox(width: 8),
-                                    Expanded(
-                                      child: TextFormField(
-                                        initialValue: currentTr.toString(),
-                                        decoration: const InputDecoration(labelText: 'T.P.', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
-                                        keyboardType: TextInputType.number,
-                                        onChanged: (val) {
-                                          notaTrabajos[student.id] = double.tryParse(val) ?? 0.0;
-                                          setModalState(() {});
-                                        },
-                                      ),
+                                    _campoRubrica(
+                                      etiqueta: 'T.P.',
+                                      valorInicial: currentTr.toString(),
+                                      onChanged: (val) {
+                                        notaTrabajos[student.id] = double.tryParse(val) ?? 0.0;
+                                        setModalState(() {});
+                                      },
                                     ),
                                     const SizedBox(width: 8),
-                                    Expanded(
-                                      child: TextFormField(
-                                        initialValue: currentPa.toString(),
-                                        decoration: const InputDecoration(labelText: 'Partic.', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
-                                        keyboardType: TextInputType.number,
-                                        onChanged: (val) {
-                                          notaParticipacion[student.id] = double.tryParse(val) ?? 0.0;
-                                          setModalState(() {});
-                                        },
-                                      ),
+                                    _campoRubrica(
+                                      etiqueta: 'Partic.',
+                                      valorInicial: currentPa.toString(),
+                                      onChanged: (val) {
+                                        notaParticipacion[student.id] = double.tryParse(val) ?? 0.0;
+                                        setModalState(() {});
+                                      },
                                     ),
-                                    const SizedBox(width: 12),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: Colors.purple.shade50,
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.purple.shade200),
-                                      ),
-                                      child: Text(
-                                        computedFinal.toStringAsFixed(1),
-                                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple.shade800),
-                                      ),
+                                    const SizedBox(width: 10),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text('Final',
+                                            style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.black54)),
+                                        const SizedBox(height: 3),
+                                        Container(
+                                          height: 40,
+                                          alignment: Alignment.center,
+                                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                                          decoration: BoxDecoration(
+                                            color: Colors.purple.shade50,
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: Colors.purple.shade200),
+                                          ),
+                                          child: Text(
+                                            computedFinal.toStringAsFixed(1),
+                                            style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.purple.shade800),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -1261,6 +1355,44 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
           },
         );
       },
+    );
+  }
+
+  /// Campo numérico compacto del asistente de rúbrica.
+  /// La etiqueta va arriba y no dentro del campo: en celular los labels
+  /// quedaban recortados ("Exa...", "Par...").
+  Widget _campoRubrica({
+    required String etiqueta,
+    required String valorInicial,
+    required ValueChanged<String> onChanged,
+  }) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            etiqueta,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black54),
+          ),
+          const SizedBox(height: 3),
+          SizedBox(
+            height: 40,
+            child: TextFormField(
+              initialValue: valorInicial,
+              textAlign: TextAlign.center,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onChanged: onChanged,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2018,103 +2150,123 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
     );
   }
 
+  /// Acciones de la barra superior. En pantallas chicas todo (salvo Guardar)
+  /// se agrupa en un menú: la fila de botones tapaba el título y el cajón.
+  List<_AccionPlanilla> _accionesPlanilla() {
+    final hayCierre = _actividades.any((a) {
+      final t = a['titulo'].toString();
+      return t.startsWith('[TAREA]') || t.startsWith('[CLASE]') || t.startsWith('[CONDUCTA]');
+    });
+
+    return [
+      _AccionPlanilla('Configurar Rúbrica', Icons.settings_outlined, _abrirModalRubrica),
+      _AccionPlanilla('Gestionar Grupos', Icons.category_outlined, _mostrarGestionCategorias),
+      _AccionPlanilla('Generar Seguimiento', Icons.analytics_outlined, _generarNotaSeguimientoInforme),
+      if (hayCierre)
+        _AccionPlanilla('Cierre Cuatrimestral', Icons.task_alt_rounded, _abrirCierreTareasClase,
+            color: Colors.teal.shade700),
+      _AccionPlanilla('Planilla Materia', Icons.print_outlined, _imprimirPlanillaCalificaciones),
+      _AccionPlanilla('Boletín Cualitativo', Icons.grade_outlined, () => _mostrarBoletinCualitativoGrid(),
+          color: Colors.blue.shade800),
+      _AccionPlanilla('Boletín General', Icons.description_outlined, () => _mostrarDialogoImpresion(),
+          color: Colors.blueGrey.shade800),
+    ];
+  }
+
+  Widget _botonGuardar() {
+    return ElevatedButton.icon(
+      icon: _isSaving
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            )
+          : const Icon(Icons.save_rounded, size: 18),
+      label: const Text('Guardar', style: TextStyle(fontWeight: FontWeight.bold)),
+      onPressed: _isSaving ? null : _guardarTodasLasNotas,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.green.shade700,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+
+  List<Widget> _buildAppBarActions(bool esMovil) {
+    final acciones = _accionesPlanilla();
+
+    if (esMovil) {
+      return [
+        _botonGuardar(),
+        PopupMenuButton<int>(
+          tooltip: 'Más acciones',
+          icon: const Icon(Icons.more_vert_rounded),
+          onSelected: (i) => acciones[i].onTap(),
+          itemBuilder: (ctx) => [
+            for (int i = 0; i < acciones.length; i++)
+              PopupMenuItem<int>(
+                value: i,
+                child: Row(
+                  children: [
+                    Icon(acciones[i].icon, size: 18, color: acciones[i].color),
+                    const SizedBox(width: 10),
+                    Text(acciones[i].label),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ];
+    }
+
+    return [
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _botonGuardar(),
+            for (final a in acciones) ...[
+              const SizedBox(width: 8),
+              a.color == null
+                  ? OutlinedButton.icon(
+                      icon: Icon(a.icon, size: 18),
+                      label: Text(a.label, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      onPressed: a.onTap,
+                    )
+                  : ElevatedButton.icon(
+                      icon: Icon(a.icon, size: 18),
+                      label: Text(a.label, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: a.color,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      onPressed: a.onTap,
+                    ),
+            ],
+            const SizedBox(width: 12),
+          ],
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final esMovil = MediaQuery.of(context).size.width < 720;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Planilla RITE', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Planilla RITE',
+            style: TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+        titleSpacing: 0,
         backgroundColor: colorScheme.surface,
         elevation: 0,
         scrolledUnderElevation: 1,
-        actions: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ElevatedButton.icon(
-                  icon: _isSaving
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.save_rounded),
-                  label: const Text('Guardar Cambios', style: TextStyle(fontWeight: FontWeight.bold)),
-                  onPressed: _isSaving ? null : _guardarTodasLasNotas,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade700,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.settings_outlined, size: 18),
-                  label: const Text('Configurar Rúbrica', style: TextStyle(fontWeight: FontWeight.w600)),
-                  onPressed: _abrirModalRubrica,
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.category_outlined, size: 18),
-                  label: const Text('Gestionar Grupos', style: TextStyle(fontWeight: FontWeight.w600)),
-                  onPressed: _mostrarGestionCategorias,
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.analytics_outlined, size: 18),
-                  label: const Text('Generar Seguimiento', style: TextStyle(fontWeight: FontWeight.w600)),
-                  onPressed: _generarNotaSeguimientoInforme,
-                ),
-                const SizedBox(width: 8),
-                // Botón de cierre cuatrimestral (tareas, clase y/o conducta)
-                if (_actividades.any((a) {
-                  final t = a['titulo'].toString();
-                  return t.startsWith('[TAREA]') || t.startsWith('[CLASE]') || t.startsWith('[CONDUCTA]');
-                }))
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.task_alt_rounded, size: 18),
-                    label: const Text('Cierre Cuatrimestral', style: TextStyle(fontWeight: FontWeight.w600)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal.shade700,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                    ),
-                    onPressed: _abrirCierreTareasClase,
-                  ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.print_outlined, size: 18),
-                  label: const Text('Planilla Materia', style: TextStyle(fontWeight: FontWeight.w600)),
-                  onPressed: _imprimirPlanillaCalificaciones,
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.grade_outlined, size: 18),
-                  label: const Text('Boletín Cualitativo', style: TextStyle(fontWeight: FontWeight.w600)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade800,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () => _mostrarBoletinCualitativoGrid(),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.description_outlined, size: 18),
-                  label: const Text('Boletín General', style: TextStyle(fontWeight: FontWeight.w600)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueGrey.shade800,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () => _mostrarDialogoImpresion(),
-                ),
-                const SizedBox(width: 12),
-              ],
-            ),
-          ),
-        ],
+        actions: _buildAppBarActions(esMovil),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _abrirModalNuevaNota,
@@ -2241,13 +2393,22 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
                   // ── Selector de modo de calificación ──────────────────────
                   if (_selectedMateriaId != null && _categorias.isNotEmpty)
-                    Row(
+                    // Wrap y no Row: en celular los tres bloques no entran en
+                    // una línea y desbordaban la pantalla.
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 12,
+                      runSpacing: 8,
                       children: [
-                        const Icon(Icons.calculate_outlined, size: 16, color: Colors.blueGrey),
-                        const SizedBox(width: 8),
-                        const Text('Modo de calificación:',
-                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                        const SizedBox(width: 12),
+                        const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.calculate_outlined, size: 16, color: Colors.blueGrey),
+                            SizedBox(width: 8),
+                            Text('Modo de calificación:',
+                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                          ],
+                        ),
                         SegmentedButton<String>(
                           style: ButtonStyle(
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -2277,7 +2438,6 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                             }
                           },
                         ),
-                        const SizedBox(width: 12),
                         Text(
                           _modoCalificacion == 'GRUPOS'
                               ? 'Promedio por grupo → ponderado por peso de categoría'
@@ -2351,21 +2511,34 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                               ),
                             )
                           : Scrollbar(
+                              controller: _scrollVertical,
                               thickness: 8.0,
                               radius: const Radius.circular(8),
                               child: SingleChildScrollView(
+                                controller: _scrollVertical,
                                 scrollDirection: Axis.vertical,
-                                child: SingleChildScrollView(
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                  // Columna de alumnos fija: al desplazarse en
+                                  // horizontal se sigue viendo a quien se califica.
+                                  _buildColumnaAlumnosFija(colorScheme),
+                                  Expanded(
+                                  child: Scrollbar(
+                                  controller: _scrollHorizontal,
+                                  thickness: 8.0,
+                                  radius: const Radius.circular(8),
+                                  child: SingleChildScrollView(
+                                  controller: _scrollHorizontal,
                                   scrollDirection: Axis.horizontal,
                                   child: DataTable(
                                     headingRowColor: WidgetStateProperty.all(colorScheme.surfaceContainerHighest.withAlpha(128)),
+                                    headingRowHeight: _kAlturaEncabezado,
+                                    dataRowMinHeight: _kAlturaFila,
+                                    dataRowMaxHeight: _kAlturaFila,
                                     columnSpacing: 6.0,
                                     horizontalMargin: 10.0,
                                     columns: [
-                                      // Columna Alumno
-                                      const DataColumn(
-                                        label: Text('Alumno', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      ),
                                       // Columnas de Actividades creadas
                                       ..._actividades.map((act) {
                                         final catName = act['aca_categorias_nota']?['nombre'] ?? '';
@@ -2512,24 +2685,6 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
 
                                       return DataRow(
                                         cells: [
-                                          // Nombre del alumno
-                                          DataCell(
-                                            Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Text(
-                                                  alumno.nombre,
-                                                  style: const TextStyle(fontWeight: FontWeight.w500),
-                                                ),
-                                                const SizedBox(width: 4),
-                                                IconButton(
-                                                  icon: const Icon(Icons.description_outlined, size: 16, color: Colors.blueGrey),
-                                                  tooltip: 'Ver Boletín General de ${alumno.nombre}',
-                                                  onPressed: () => _mostrarDialogoImpresion(alumnoEspecifico: alumno),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
                                           // Celdas de Notas
                                           ..._actividades.map((act) {
                                             final key = '${alumno.id}_${act['id']}';
@@ -2749,6 +2904,10 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                       );
                                     }).toList(),
                                   ),
+                                  ),
+                                  ),
+                                  ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -3473,4 +3632,14 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
     nombreCtrl.dispose();
     pesoCtrl.dispose();
   }
+}
+
+/// Acción de la barra superior de la planilla.
+class _AccionPlanilla {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color? color;
+
+  const _AccionPlanilla(this.label, this.icon, this.onTap, {this.color});
 }
