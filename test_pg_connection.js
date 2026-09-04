@@ -5,7 +5,7 @@ const client = new Client({
   port: 6543, // Transaction pooler port (standard for Supabase)
   database: 'postgres',
   user: 'postgres',
-  password: 'F-8#NvMXp6P+#sU',
+  password: process.env.SUPABASE_DB_PASSWORD,
   ssl: {
     rejectUnauthorized: false
   }

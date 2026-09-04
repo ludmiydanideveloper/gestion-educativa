@@ -5,7 +5,7 @@ const config = {
   port: 6543,
   database: 'postgres',
   user: 'postgres',
-  password: 'F-8#NvMXp6P+#sU',
+  password: process.env.SUPABASE_DB_PASSWORD,
   ssl: { rejectUnauthorized: false }
 };
 

@@ -42,7 +42,20 @@ if [ -f "assets/images/logo.png" ]; then
 fi
 
 # 6. Compilar la aplicación web para producción (Release Mode)
+#
+# Las credenciales de Supabase se inyectan como variables de entorno del
+# proyecto en Vercel (Settings > Environment Variables), no van en el código.
+# SUPABASE_ANON_KEY debe ser la clave "anon public", nunca la "service_role".
+if [ -z "$SUPABASE_ANON_KEY" ]; then
+  echo "❌ Falta la variable de entorno SUPABASE_ANON_KEY."
+  echo "   Cargala en Vercel > Settings > Environment Variables con la clave"
+  echo "   'anon public' del proyecto Supabase (Settings > API)."
+  exit 1
+fi
+
+SUPABASE_URL="${SUPABASE_URL:-https://qiwwmlysqidwnywmrwko.supabase.co}"
+
 echo "=== 🏗️ Compilando aplicación Web para Vercel ==="
-flutter build web --release
+flutter build web --release   --dart-define=SUPABASE_URL="$SUPABASE_URL"   --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
 
 echo "=== ✅ ¡Compilación finalizada con éxito! Archivos generados en build/web ==="

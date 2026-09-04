@@ -9,14 +9,39 @@ import 'screens/dashboard_preceptor.dart';
 import 'screens/portal_familia.dart';
 import 'theme/app_theme.dart';
 
+/// URL y clave del proyecto Supabase.
+///
+/// Se pasan al compilar para no versionar credenciales:
+///
+///   flutter build web \
+///     --dart-define=SUPABASE_URL=https://xxxx.supabase.co \
+///     --dart-define=SUPABASE_ANON_KEY=<clave anon public>
+///
+/// La clave DEBE ser la "anon public" (Supabase > Settings > API), NUNCA la
+/// "service_role": esa saltea por completo las políticas RLS y quedaría
+/// publicada en el navegador de cada usuario.
+///
+/// Hasta ahora la clave estaba escrita acá y era de service_role, así que
+/// cualquiera que abriera la app tenía acceso total a la base.
+const String _supabaseUrl = String.fromEnvironment(
+  'SUPABASE_URL',
+  defaultValue: 'https://qiwwmlysqidwnywmrwko.supabase.co',
+);
+
+const String _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+
 void main() async {
   // Garantizar inicialización correcta de bindings de Flutter
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inicializar Supabase con tus credenciales configuradas
+  if (_supabaseAnonKey.isEmpty) {
+    runApp(const _FaltaConfiguracionApp());
+    return;
+  }
+
   await Supabase.initialize(
-    url: 'https://qiwwmlysqidwnywmrwko.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpd3dtbHlzcWlkd255d21yd2tvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MTI5NTc3NiwiZXhwIjoyMDk2ODcxNzc2fQ.q2yxNRrJF-Bgcn2uZ_Eiu8fXqTqsYyZVCL7mA3509w8',
+    url: _supabaseUrl,
+    anonKey: _supabaseAnonKey,
   );
 
   runApp(
@@ -25,6 +50,70 @@ void main() async {
       child: const MyApp(),
     ),
   );
+}
+
+/// Pantalla que se muestra cuando falta la clave de Supabase, en lugar de
+/// arrancar contra una credencial escrita en el código.
+class _FaltaConfiguracionApp extends StatelessWidget {
+  const _FaltaConfiguracionApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      home: Scaffold(
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(28),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.key_off_rounded, size: 56, color: Colors.orange),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Falta configurar la clave de Supabase',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Compilá la app pasando la clave "anon public" del proyecto '
+                    '(Supabase > Settings > API):',
+                    style: TextStyle(fontSize: 14, height: 1.4),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: const SelectableText(
+                      'flutter build web \\\n'
+                      '  --dart-define=SUPABASE_URL=https://xxxx.supabase.co \\\n'
+                      '  --dart-define=SUPABASE_ANON_KEY=<clave anon public>',
+                      style: TextStyle(fontFamily: 'monospace', fontSize: 13, height: 1.5),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'No uses la clave service_role: ignora las políticas RLS y '
+                    'le da acceso completo a la base a cualquiera que abra la app.',
+                    style: TextStyle(fontSize: 13, color: Colors.black54, height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -67,7 +156,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
-    
+
     // 1. Verificar la sesión actual de forma síncrona/inmediata al iniciar
     _session = Supabase.instance.client.auth.currentSession;
     _isLoading = false;
@@ -102,7 +191,7 @@ class _AuthGateState extends State<AuthGate> {
     if (_session != null) {
       final user = _session!.user;
       final rol = user.userMetadata?['rol'] as String?;
-      
+
       if (rol == 'ALUMNO' || rol == 'PADRE') {
         return const PortalFamilia();
       } else {

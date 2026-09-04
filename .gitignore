@@ -46,3 +46,10 @@ app.*.map.json
 /flutter/
 /node_modules/
 *.zip
+
+# Archivos temporales de herramientas
+.claude/tmp/
+
+# Credenciales locales (nunca versionar)
+.env
+.env.local
