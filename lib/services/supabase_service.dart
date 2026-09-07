@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/alumno_asistencia.dart';
 import '../models/mensaje.dart';
@@ -212,20 +214,49 @@ class SupabaseService {
       }
     }
 
+    final dia = fecha.toIso8601String().substring(0, 10);
+    final tipoFinal = materiaId != null ? 'POR_MATERIA' : tipoAsistencia;
+
+    // ¿Ya hay planilla de ese día/curso/tipo? Entonces se REUSA (la toma pasa a
+    // ser una edición) en vez de crear una segunda: así no se puede tomar lista
+    // dos veces ni chocar con el índice único parcial de asistencia_cabecera.
+    try {
+      var q = _client
+          .from('asistencia_cabecera')
+          .select('asistencia_cabecera_id')
+          .eq('curso_id', cursoId)
+          .eq('fecha', dia)
+          .eq('tipo_asistencia', tipoFinal);
+      q = materiaId != null
+          ? q.eq('materia_id', materiaId)
+          : q.isFilter('materia_id', null);
+      final existente = await q.maybeSingle();
+      if (existente != null) {
+        final id = existente['asistencia_cabecera_id'] as String;
+        await _client
+            .from('asistencia_cabecera')
+            .update({'estado': 'APROBADO', 'registrado_por_docente_id': finalDocenteId})
+            .eq('asistencia_cabecera_id', id);
+        return id;
+      }
+    } catch (e) {
+      print('Aviso: no se pudo verificar planilla previa: $e');
+    }
+
     final response = await _client.from('asistencia_cabecera').insert({
       'curso_id': cursoId,
-      'fecha': fecha.toIso8601String().substring(0, 10), // Formato YYYY-MM-DD
+      'fecha': dia, // Formato YYYY-MM-DD
       'estado': 'APROBADO', // Planilla aprobada
       'registrado_por_docente_id': finalDocenteId,
       'materia_id': materiaId,
-      'tipo_asistencia': materiaId != null ? 'POR_MATERIA' : tipoAsistencia,
+      'tipo_asistencia': tipoFinal,
     }).select('asistencia_cabecera_id').single();
 
     // Notificar a Administración / Dirección sobre la toma de asistencia
     obtenerAuthIdsAdministracion().then((adminIds) {
       notificarSistema(
-        asunto: 'Movimiento Escolar: Toma de Asistencia (${fecha.toIso8601String().substring(0, 10)})',
-        texto: 'Se ha registrado la planilla de asistencia ($tipoAsistencia) en el curso.',
+        asunto: 'Movimiento Escolar: Toma de Asistencia ($dia)',
+        texto: 'Se ha registrado la planilla de asistencia ($tipoFinal) en el curso.',
         destinatariosAuthIds: adminIds,
       );
     });
@@ -233,8 +264,15 @@ class SupabaseService {
     return response['asistencia_cabecera_id'] as String;
   }
 
-  /// Inserta de forma masiva (bulk insert) todos los detalles de asistencia
+  /// Inserta de forma masiva (bulk insert) todos los detalles de asistencia.
+  /// Primero borra los detalles previos de esa cabecera, así volver a guardar
+  /// (editar) la planilla reemplaza en vez de duplicar filas.
   Future<void> insertDetalles(String cabeceraId, List<AlumnoAsistencia> alumnos) async {
+    await _client
+        .from('asistencia_detalle')
+        .delete()
+        .eq('asistencia_cabecera_id', cabeceraId);
+
     final detalles = alumnos.map((alumno) {
       return {
         'asistencia_cabecera_id': cabeceraId,
@@ -337,6 +375,61 @@ class SupabaseService {
         return 'TARDE';
       case EstadoAsistencia.retiro:
         return 'RETIRO_ANTICIPADO';
+    }
+  }
+
+  /// Inverso de [_obtenerTipoInasistencia]: reconstruye el estado a partir del
+  /// texto guardado, para poder precargar una planilla ya registrada.
+  EstadoAsistencia estadoAsistenciaDesdeTipo(String? tipo) {
+    switch ((tipo ?? '').toUpperCase()) {
+      case 'AUSENTE':
+        return EstadoAsistencia.ausente;
+      case 'TARDE':
+        return EstadoAsistencia.tarde;
+      case 'RETIRO_ANTICIPADO':
+      case 'RETIRO':
+        return EstadoAsistencia.retiro;
+      default:
+        return EstadoAsistencia.presente;
+    }
+  }
+
+  /// Devuelve la planilla de asistencia ya cargada para ese día (o null).
+  /// `{ 'cabeceraId': String, 'estados': Map<alumnoId, EstadoAsistencia> }`.
+  Future<Map<String, dynamic>?> obtenerAsistenciaDelDia({
+    required String cursoId,
+    String? materiaId,
+    required DateTime fecha,
+  }) async {
+    final dia = fecha.toIso8601String().substring(0, 10);
+    try {
+      var q = _client
+          .from('asistencia_cabecera')
+          .select('asistencia_cabecera_id')
+          .eq('curso_id', cursoId)
+          .eq('fecha', dia);
+      if (materiaId != null) {
+        q = q.eq('materia_id', materiaId).eq('tipo_asistencia', 'POR_MATERIA');
+      } else {
+        q = q.eq('tipo_asistencia', 'PRECEPTOR_DIARIA');
+      }
+      final cab = await q.maybeSingle();
+      if (cab == null) return null;
+      final cabeceraId = cab['asistencia_cabecera_id'] as String;
+
+      final det = await _client
+          .from('asistencia_detalle')
+          .select('alumno_id, tipo')
+          .eq('asistencia_cabecera_id', cabeceraId);
+
+      final estados = <String, EstadoAsistencia>{
+        for (final d in det)
+          (d['alumno_id'] as String): estadoAsistenciaDesdeTipo(d['tipo'] as String?)
+      };
+      return {'cabeceraId': cabeceraId, 'estados': estados};
+    } catch (e) {
+      print('Error al obtener asistencia del día: $e');
+      return null;
     }
   }
 
@@ -1232,7 +1325,7 @@ class SupabaseService {
 
   /// Obtiene los eventos de calendario de la escuela (curso_id es null) o específicos para el curso_id del alumno.
   /// Si [soloPublicos] es true, filtra eventos marcados como internos ([INTERNO]) o exclusivos de docentes/personal.
-  Future<List<Map<String, dynamic>>> obtenerCalendarioPorCurso(String? cursoId, {bool soloPublicos = true}) async {
+  Future<List<Map<String, dynamic>>> obtenerCalendarioPorCurso(String? cursoId, {bool soloPublicos = true, String? materiaId}) async {
     try {
       dynamic query = _client.from('acad_calendario').select('*');
       if (cursoId != null && cursoId.isNotEmpty) {
@@ -1242,7 +1335,20 @@ class SupabaseService {
         query = query.isFilter('curso_id', null);
       }
       final response = await query.order('fecha', ascending: true);
-      final lista = List<Map<String, dynamic>>.from(response);
+      var lista = List<Map<String, dynamic>>.from(response);
+
+      // Si se pide una materia puntual: sólo sus eventos + los del curso que no
+      // están atados a otra materia (reuniones/actividades generales del curso).
+      // Nunca los TEMARIO (van al Libro de Temas, no a "Fechas Importantes").
+      if (materiaId != null && materiaId.isNotEmpty) {
+        lista = lista.where((ev) {
+          final tipo = (ev['tipo_evento'] ?? '').toString().toUpperCase();
+          if (tipo == 'TEMARIO') return false;
+          final evMateria = ev['materia_id']?.toString();
+          if (evMateria != null && evMateria.isNotEmpty) return evMateria == materiaId;
+          return true; // sin materia: evento a nivel curso/escuela
+        }).toList();
+      }
 
       if (soloPublicos) {
         return lista.where((ev) {
@@ -1288,6 +1394,7 @@ class SupabaseService {
     required String fecha,
     required String tipoEvento,
     String? cursoId,
+    String? materiaId,
     bool esInterno = false,
     bool notificarPadres = false,
     bool notificarDocentes = false,
@@ -1298,27 +1405,55 @@ class SupabaseService {
     final finalTitulo = esInterno && !titulo.startsWith('[INTERNO]') ? '[INTERNO] $titulo' : titulo;
     final finalDesc = esInterno && !descripcion.startsWith('[INTERNO]') ? '[INTERNO] $descripcion' : descripcion;
 
+    // Se firma el evento con su autor: de eso depende quien puede despues
+    // modificarlo o borrarlo.
+    String? docenteId;
     try {
-      await _client.from('acad_calendario').insert({
-        'titulo': finalTitulo,
-        'descripcion': finalDesc,
-        'fecha': fecha,
-        'tipo_evento': tipoEvento,
-        'curso_id': (cursoId != null && cursoId.isNotEmpty) ? cursoId : null,
-      });
+      docenteId = await obtenerDocenteIdActual();
+    } catch (_) {
+      docenteId = null;
+    }
+
+    final base = <String, dynamic>{
+      'titulo': finalTitulo,
+      'descripcion': finalDesc,
+      'fecha': fecha,
+      'tipo_evento': tipoEvento,
+      'curso_id': (cursoId != null && cursoId.isNotEmpty) ? cursoId : null,
+      'materia_id': (materiaId != null && materiaId.isNotEmpty) ? materiaId : null,
+      'creado_por': user.id,
+      'docente_id': docenteId,
+    };
+
+    try {
+      await _client.from('acad_calendario').insert(base);
     } catch (e) {
       String dbTipo = tipoEvento.toUpperCase();
-      if (dbTipo.contains('EVALUAC')) dbTipo = 'EVALUACION';
-      else if (dbTipo.contains('REUNI')) dbTipo = 'REUNION';
-      else dbTipo = 'ACTIVIDAD';
+      if (dbTipo.contains('EVALUAC')) {
+        dbTipo = 'EVALUACION';
+      } else if (dbTipo.contains('REUNI')) {
+        dbTipo = 'REUNION';
+      } else {
+        dbTipo = 'ACTIVIDAD';
+      }
 
-      await _client.from('acad_calendario').insert({
-        'titulo': finalTitulo,
+      final conCategoria = <String, dynamic>{
+        ...base,
         'descripcion': '$finalDesc [Cat: $tipoEvento]',
-        'fecha': fecha,
         'tipo_evento': dbTipo,
-        'curso_id': (cursoId != null && cursoId.isNotEmpty) ? cursoId : null,
-      });
+      };
+
+      try {
+        await _client.from('acad_calendario').insert(conCategoria);
+      } catch (_) {
+        // Respaldo por si la migración de autoría/materia todavía no se aplicó:
+        // se reintenta sin las columnas nuevas.
+        final minimo = Map<String, dynamic>.from(conCategoria)
+          ..remove('creado_por')
+          ..remove('docente_id')
+          ..remove('materia_id');
+        await _client.from('acad_calendario').insert(minimo);
+      }
     }
 
     // ── Notificaciones ───────────────────────────────────────────────
@@ -1337,6 +1472,83 @@ class SupabaseService {
         }
       });
     }
+  }
+
+  /// Modifica un evento del calendario. La política de acad_calendario sólo
+  /// deja pasar la operación si el evento es del docente autenticado (o si es
+  /// personal directivo), así que un intento ajeno vuelve como error.
+  Future<void> actualizarEventoCalendario({
+    required String eventoId,
+    String? titulo,
+    String? descripcion,
+    String? fecha,
+    String? tipoEvento,
+  }) async {
+    final cambios = <String, dynamic>{};
+    if (titulo != null) cambios['titulo'] = titulo;
+    if (descripcion != null) cambios['descripcion'] = descripcion;
+    if (fecha != null) cambios['fecha'] = fecha;
+    if (tipoEvento != null) cambios['tipo_evento'] = tipoEvento;
+    if (cambios.isEmpty) return;
+
+    final res = await _client
+        .from('acad_calendario')
+        .update(cambios)
+        .eq('evento_id', eventoId)
+        .select('evento_id');
+
+    if ((res as List).isEmpty) {
+      throw Exception(
+          'No se pudo modificar: sólo puede hacerlo quien creó el evento o la dirección.');
+    }
+  }
+
+  /// Elimina un evento del calendario, con la misma regla de autoría.
+  Future<void> eliminarEventoCalendario(String eventoId) async {
+    final res = await _client
+        .from('acad_calendario')
+        .delete()
+        .eq('evento_id', eventoId)
+        .select('evento_id');
+
+    if ((res as List).isEmpty) {
+      // Distinguir "ya no existe" de "sin permiso" para no confundir al usuario.
+      final sigueExistiendo = await _client
+          .from('acad_calendario')
+          .select('evento_id')
+          .eq('evento_id', eventoId)
+          .maybeSingle();
+      if (sigueExistiendo == null) return; // ya estaba borrado: se considera OK
+      throw Exception(
+          'No se pudo eliminar: sólo puede hacerlo quien creó el evento o la dirección.');
+    }
+  }
+
+  /// ¿El usuario actual puede modificar o borrar este evento?
+  ///
+  /// Refleja la política de la base para no ofrecer botones que después van a
+  /// fallar: el autor, o —en los eventos heredados que no tienen autor— un
+  /// docente que dicte en ese curso. [cursosDelDocente] son los curso_id que
+  /// tiene asignados quien está mirando.
+  bool puedeEditarEvento(
+    Map<String, dynamic> evento, {
+    Iterable<String> cursosDelDocente = const [],
+  }) {
+    final user = _client.auth.currentUser;
+    final uid = user?.id;
+    if (uid == null) return false;
+
+    // Dirección / preceptoría pueden tocar cualquier evento (la política RLS
+    // lo permite vía es_personal_directivo()).
+    final rol = user?.userMetadata?['rol'] as String?;
+    if (rol == 'ADMIN' || rol == 'PRECEPTOR') return true;
+
+    final autor = evento['creado_por']?.toString();
+    if (autor != null && autor.isNotEmpty) return autor == uid;
+
+    final cursoId = evento['curso_id']?.toString();
+    if (cursoId == null || cursoId.isEmpty) return false;
+    return cursosDelDocente.contains(cursoId);
   }
 
   /// Obtiene auth_ids de padres y/o docentes para notificar eventos de calendario.
@@ -1959,6 +2171,273 @@ class SupabaseService {
         .from('usr_legajo_alumno')
         .update({'datos_demograficos': demo})
         .eq('legajo_id', alumnoId);
+  }
+
+  // ─── EOE / ADECUACIONES CURRICULARES ────────────────────────────────────
+  //
+  // eoe_ficha / eoe_bitacora / eoe_documentos + bucket 'eoe'
+  // (ver eoe_banco_migration.sql). El flag datos_demograficos.adecuacion_curricular
+  // se sigue escribiendo para no romper los paneles que ya lo leen.
+
+  String _nombreUsuarioActual() {
+    final u = _client.auth.currentUser;
+    return (u?.userMetadata?['nombre'] ??
+            u?.userMetadata?['first_name'] ??
+            u?.email ??
+            'Usuario')
+        .toString();
+  }
+
+  String rolUsuarioActual() {
+    final rol = _client.auth.currentUser?.userMetadata?['rol'] as String?;
+    return rol ?? 'DOCENTE';
+  }
+
+  bool get esDirectivoActual {
+    final rol = rolUsuarioActual();
+    return rol == 'ADMIN' || rol == 'PRECEPTOR' || rol == 'EOE';
+  }
+
+  /// Fichas EOE activas. Si se pasa [cursoId] (portal docente) se limita a ese
+  /// curso usando el roster real; sin cursoId (administración) trae todas.
+  Future<List<Map<String, dynamic>>> obtenerFichasEoe({String? cursoId}) async {
+    // 1. Fichas persistidas
+    Map<String, Map<String, dynamic>> porLegajo = {};
+    try {
+      final res = await _client.from('eoe_ficha').select('*');
+      porLegajo = {
+        for (final f in List<Map<String, dynamic>>.from(res))
+          f['legajo_id'].toString(): f
+      };
+    } catch (e) {
+      debugPrint('eoe_ficha no disponible aún: $e');
+    }
+
+    // 2. Roster
+    final List<Map<String, dynamic>> base = [];
+    if (cursoId != null) {
+      final roster = await fetchAlumnos(cursoId: cursoId);
+      for (final a in roster) {
+        base.add({'legajo_id': a.id, 'nombre_completo': a.nombre, 'dni': '', 'curso_id': cursoId});
+      }
+    } else {
+      final lista = await fetchAlumnosList();
+      for (final a in lista) {
+        base.add({
+          'legajo_id': a['legajo_id'],
+          'nombre_completo': a['nombre_completo'],
+          'dni': a['dni'] ?? '',
+          'curso_id': a['curso_id'],
+          'curso_nombre': a['curso_nombre'],
+          'demo_activa': a['adecuacion_curricular'] == true,
+          'demo_tipo': a['tipo_adecuacion'],
+          'demo_detalles': a['detalles_adecuacion'],
+        });
+      }
+    }
+
+    // 3. Merge → sólo activas
+    final out = <Map<String, dynamic>>[];
+    for (final a in base) {
+      final f = porLegajo[a['legajo_id'].toString()];
+      final activa = f != null ? (f['activa'] == true) : (a['demo_activa'] == true);
+      if (!activa) continue;
+      out.add({
+        'legajo_id': a['legajo_id'],
+        'nombre_completo': a['nombre_completo'],
+        'dni': a['dni'] ?? '',
+        'curso_id': a['curso_id'],
+        'curso_nombre': a['curso_nombre'],
+        'tipo_adecuacion': f?['tipo_adecuacion'] ?? a['demo_tipo'] ?? 'Metodológica',
+        'detalles': f?['detalles'] ?? a['demo_detalles'] ?? '',
+        'datos_formulario':
+            Map<String, dynamic>.from(f?['datos_formulario'] as Map? ?? {}),
+        'tiene_ficha': f != null,
+      });
+    }
+    out.sort((x, y) => (x['nombre_completo'] ?? '')
+        .toString()
+        .compareTo((y['nombre_completo'] ?? '').toString()));
+    return out;
+  }
+
+  /// Alta/edición de la ficha EOE de un alumno ya inscripto.
+  Future<void> guardarFichaEoe({
+    required String legajoId,
+    required bool activa,
+    required String tipo,
+    required String detalles,
+    Map<String, dynamic> datosFormulario = const {},
+  }) async {
+    final user = _client.auth.currentUser;
+    await _client.from('eoe_ficha').upsert({
+      'legajo_id': legajoId,
+      'activa': activa,
+      'tipo_adecuacion': tipo,
+      'detalles': detalles,
+      'datos_formulario': datosFormulario,
+      'actualizado_por': user?.id,
+      'actualizado_en': DateTime.now().toIso8601String(),
+    }, onConflict: 'legajo_id');
+
+    // Compatibilidad con los paneles que leen el flag del legajo.
+    await actualizarAdecuacionCurricular(
+      alumnoId: legajoId,
+      activa: activa,
+      tipo: tipo,
+      detalles: detalles,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> obtenerBitacoraEoe(String legajoId) async {
+    try {
+      final res = await _client
+          .from('eoe_bitacora')
+          .select('*')
+          .eq('legajo_id', legajoId)
+          .order('fecha', ascending: false)
+          .order('created_at', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint('Error obtener bitácora EOE: $e');
+      return [];
+    }
+  }
+
+  Future<void> agregarNotaBitacoraEoe({
+    required String legajoId,
+    required String nota,
+  }) async {
+    final user = _client.auth.currentUser;
+    final rol = rolUsuarioActual();
+    await _client.from('eoe_bitacora').insert({
+      'legajo_id': legajoId,
+      'autor_auth': user?.id,
+      'autor_nombre': _nombreUsuarioActual(),
+      'autor_rol': rol == 'ADMIN' || rol == 'PRECEPTOR'
+          ? 'ADMIN'
+          : (rol == 'EOE' ? 'EOE' : 'DOCENTE'),
+      'nota': nota,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> obtenerDocumentosEoe(String legajoId,
+      {String? categoria}) async {
+    try {
+      var q = _client.from('eoe_documentos').select('*').eq('legajo_id', legajoId);
+      if (categoria != null) q = q.eq('categoria', categoria);
+      final res = await q.order('created_at', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint('Error obtener documentos EOE: $e');
+      return [];
+    }
+  }
+
+  /// Sube un archivo al bucket 'eoe' y registra el documento.
+  Future<void> subirDocumentoEoe({
+    required String legajoId,
+    required String categoria,
+    required List<int> bytes,
+    required String fileName,
+    String? observaciones,
+  }) async {
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final limpio = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final path = '$legajoId/$categoria/${ts}_$limpio';
+
+    await _client.storage.from('eoe').uploadBinary(
+          path,
+          Uint8List.fromList(bytes),
+          fileOptions: const FileOptions(upsert: true),
+        );
+
+    await _client.from('eoe_documentos').insert({
+      'legajo_id': legajoId,
+      'nombre': fileName,
+      'categoria': categoria,
+      'storage_path': path,
+      'observaciones_eoe': observaciones,
+      'estado': categoria == 'EVAL_ADECUADA' ? 'ADECUADA' : 'PENDIENTE',
+      'subido_por_auth': _client.auth.currentUser?.id,
+      'subido_por_nombre': _nombreUsuarioActual(),
+    });
+  }
+
+  Future<void> actualizarDocumentoEoe({
+    required String id,
+    String? observaciones,
+    String? estado,
+  }) async {
+    final cambios = <String, dynamic>{};
+    if (observaciones != null) cambios['observaciones_eoe'] = observaciones;
+    if (estado != null) cambios['estado'] = estado;
+    if (cambios.isEmpty) return;
+    await _client.from('eoe_documentos').update(cambios).eq('id', id);
+  }
+
+  /// URL firmada (1h) para descargar un archivo de un bucket privado.
+  Future<String> urlFirmadaStorage(String bucket, String path) async {
+    return _client.storage.from(bucket).createSignedUrl(path, 3600);
+  }
+
+  // ─── BANCO DE EVALUACIONES ──────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> obtenerBancoEvaluaciones({
+    required String materiaId,
+    String? cursoId,
+  }) async {
+    var q = _client.from('banco_evaluaciones').select('*').eq('materia_id', materiaId);
+    if (cursoId != null && cursoId.isNotEmpty) {
+      // Incluir las cargadas antes de existir curso_id (curso_id null).
+      q = q.or('curso_id.eq.$cursoId,curso_id.is.null');
+    }
+    final res = await q.order('created_at', ascending: false);
+    return List<Map<String, dynamic>>.from(res);
+  }
+
+  /// Sube el archivo al bucket 'banco-evaluaciones' y registra la propuesta.
+  Future<Map<String, dynamic>> subirEvaluacionBanco({
+    required String materiaId,
+    required String cursoId,
+    required String titulo,
+    required String descripcion,
+    required String tipo,
+    List<int>? bytes,
+    String? fileName,
+    required bool aprobarAlSubir,
+  }) async {
+    String? storagePath;
+    if (bytes != null && fileName != null) {
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final limpio = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      storagePath = '$cursoId/$materiaId/${ts}_$limpio';
+      await _client.storage.from('banco-evaluaciones').uploadBinary(
+            storagePath,
+            Uint8List.fromList(bytes),
+            fileOptions: const FileOptions(upsert: true),
+          );
+    }
+
+    final fila = {
+      'materia_id': materiaId,
+      'curso_id': cursoId,
+      'titulo': titulo,
+      'descripcion': descripcion,
+      'tipo': tipo,
+      'archivo_url': fileName,
+      'storage_path': storagePath,
+      'estado': aprobarAlSubir ? 'APROBADA' : 'PENDIENTE DE APROBACIÓN',
+      'subido_por': _nombreUsuarioActual(),
+      'subido_por_auth': _client.auth.currentUser?.id,
+    };
+
+    final res = await _client.from('banco_evaluaciones').insert(fila).select().single();
+    return Map<String, dynamic>.from(res);
+  }
+
+  Future<void> cambiarEstadoEvaluacionBanco(String id, String estado) async {
+    await _client.from('banco_evaluaciones').update({'estado': estado}).eq('id', id);
   }
 
   /// Asocia un docente a una materia y curso en la tabla relacional

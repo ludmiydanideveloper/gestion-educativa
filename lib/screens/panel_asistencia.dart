@@ -31,7 +31,7 @@ class _PanelAsistenciaState extends State<PanelAsistencia> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AsistenciaProvider>().cargarAlumnos(cursoId: widget.cursoId);
+      context.read<AsistenciaProvider>().cargarAlumnos(cursoId: widget.cursoId, materiaId: widget.materiaId);
       _cargarAsistenciaMensual();
     });
   }
@@ -91,6 +91,7 @@ class _PanelAsistenciaState extends State<PanelAsistencia> {
 
   void _mostrarConfirmacionGuardado() {
     final provider = context.read<AsistenciaProvider>();
+    final editando = provider.yaGuardadaHoy;
     final presentes = provider.alumnos.where((a) => a.estado == EstadoAsistencia.presente).length;
     final ausentes = provider.alumnos.where((a) => a.estado == EstadoAsistencia.ausente).length;
     final tardes = provider.alumnos.where((a) => a.estado == EstadoAsistencia.tarde).length;
@@ -107,7 +108,7 @@ class _PanelAsistenciaState extends State<PanelAsistencia> {
             children: [
               Icon(Icons.assignment_turned_in_rounded, color: colorScheme.primary),
               const SizedBox(width: 10),
-              const Text('Confirmar Planilla', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text(editando ? 'Actualizar Planilla' : 'Confirmar Planilla', style: const TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -115,9 +116,11 @@ class _PanelAsistenciaState extends State<PanelAsistencia> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                '¿Deseas consolidar y guardar la asistencia de hoy con el siguiente resumen?',
-                style: TextStyle(fontSize: 14),
+              Text(
+                editando
+                    ? 'Ya existe una planilla registrada para hoy. Se sobrescribirá con este resumen:'
+                    : '¿Deseas consolidar y guardar la asistencia de hoy con el siguiente resumen?',
+                style: const TextStyle(fontSize: 14),
               ),
               const SizedBox(height: 16),
               Container(
@@ -150,7 +153,7 @@ class _PanelAsistenciaState extends State<PanelAsistencia> {
                 Navigator.of(context).pop();
                 _confirmarAsistencia(context);
               },
-              child: const Text('Guardar Planilla'),
+              child: Text(editando ? 'Sobrescribir' : 'Guardar Planilla'),
             ),
           ],
         );
@@ -527,7 +530,7 @@ class _PanelAsistenciaState extends State<PanelAsistencia> {
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Recargar',
             onPressed: () {
-              provider.cargarAlumnos(cursoId: widget.cursoId);
+              provider.cargarAlumnos(cursoId: widget.cursoId, materiaId: widget.materiaId);
               _cargarAsistenciaMensual();
             },
           ),
@@ -564,6 +567,24 @@ class _PanelAsistenciaState extends State<PanelAsistencia> {
                       ],
                     ),
                   ),
+                  if (provider.yaGuardadaHoy)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      color: Colors.blue.withAlpha(28),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.edit_note_rounded, size: 18, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text(
+                              'La planilla de hoy ya está registrada. Estás editándola: al guardar se sobrescribe.',
+                              style: TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   // ── Lista de alumnos ───────────────────────────────────
                   Expanded(
                     child: provider.alumnos.isEmpty
@@ -600,8 +621,8 @@ class _PanelAsistenciaState extends State<PanelAsistencia> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.cloud_upload_rounded),
-              label: const Text('Confirmar Planilla',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              label: Text(provider.yaGuardadaHoy ? 'Actualizar Planilla' : 'Confirmar Planilla',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
               backgroundColor: colorScheme.primary,
               foregroundColor: colorScheme.onPrimary,
             ),

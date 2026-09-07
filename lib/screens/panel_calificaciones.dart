@@ -387,13 +387,11 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
     String? selectedCategoriaId;
     String tipoNota = 'NUMERICA'; // 'NUMERICA', 'TAREA', 'CLASE', 'INFORMATIVA', 'CONDUCTA'
     DateTime selectedFecha = DateTime.now();
-    bool agendarEnCalendario = true;
     double? pesoActividad; // Solo se usa en modo PORCENTAJE
     final pesoCtrlModal = TextEditingController();
 
     final matSeleccionada = _materias.firstWhere((m) => m['materia_id'] == _selectedMateriaId, orElse: () => <String, dynamic>{});
     final nombreMateria = matSeleccionada['nombre_asignatura']?.toString() ?? 'Materia';
-    final cursoIdMateria = matSeleccionada['curso_id']?.toString() ?? widget.cursoId;
 
     final currentUser = Supabase.instance.client.auth.currentUser;
     final nombreRegistro = currentUser?.userMetadata?['nombre'] ??
@@ -502,25 +500,6 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                             const Icon(Icons.edit_calendar_rounded, color: Colors.blue),
                           ],
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Switch / Checkbox para publicar en Calendario
-                    Container(
-                      decoration: BoxDecoration(
-                        color: agendarEnCalendario ? Colors.green.shade50 : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: agendarEnCalendario ? Colors.green.shade300 : Colors.grey.shade300),
-                      ),
-                      child: SwitchListTile(
-                        value: agendarEnCalendario,
-                        onChanged: (val) => setModalState(() => agendarEnCalendario = val),
-                        activeColor: Colors.green.shade700,
-                        title: const Text('Publicar en Calendario Familiar y Docente',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                        subtitle: const Text('Las familias verán esta evaluación programada en su cronograma.',
-                            style: TextStyle(fontSize: 11)),
-                        dense: true,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -701,27 +680,13 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                   : null,
                             );
 
-                            if (agendarEnCalendario) {
-                              try {
-                                await _supabaseService.crearEventoCalendario(
-                                  titulo: '$nombreMateria: $finalTitulo',
-                                  descripcion: 'Evaluación / Calificación programada en planilla de $nombreMateria.',
-                                  fecha: selectedFecha.toIso8601String().substring(0, 10),
-                                  tipoEvento: 'EVALUACION',
-                                  cursoId: cursoIdMateria,
-                                );
-                              } catch (calErr) {
-                                print('Aviso: no se pudo sincronizar con calendario: $calErr');
-                              }
-                            }
-                            
                             // Recargar planilla
                             await _cargarPlanillaMateria();
-                            
+
                             if (mounted) {
                               messenger.showSnackBar(
                                 const SnackBar(
-                                  content: Text('Nota y agendamiento en calendario creados exitosamente'),
+                                  content: Text('Nota creada correctamente'),
                                   backgroundColor: Colors.green,
                                 ),
                               );
@@ -747,7 +712,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Crear y Agendar'),
+                      : const Text('Crear'),
                 ),
               ],
             );

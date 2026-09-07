@@ -99,139 +99,10 @@ class PanelGestionMateria extends StatelessWidget {
             ),
             const SizedBox(height: 24.0),
             // ── FECHAS IMPORTANTES (EVALUACIONES Y ENTREGAS) ────────────────
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: Colors.orange.withAlpha(100), width: 1.5),
-              ),
-              color: Colors.orange.shade50.withAlpha(120),
-              child: Padding(
-                padding: const EdgeInsets.all(18.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      alignment: WrapAlignment.spaceBetween,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.event_available_rounded, color: Colors.deepOrange, size: 22),
-                            const SizedBox(width: 10),
-                            const Flexible(
-                              child: Text(
-                                'Fechas Importantes (Evaluaciones y Entregas)',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.deepOrange),
-                              ),
-                            ),
-                          ],
-                        ),
-                        TextButton.icon(
-                          onPressed: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => CalendarioDocente(
-                                cursoIdInicial: cursoId,
-                                cursNombreInicial: identificadorDivision,
-                              ),
-                            ),
-                          ),
-                          icon: const Icon(Icons.calendar_month_rounded, size: 14),
-                          label: const Text('Ver Calendario Completo', style: TextStyle(fontSize: 12)),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // Fechas reales desde acad_calendario. Antes eran dos chips
-                    // fijos ("15/07 - Examen Trimestral" y "22/07 - Entrega TP
-                    // Integrador") escritos a mano, que se mostraban siempre
-                    // aunque no hubiera nada agendado.
-                    FutureBuilder<List<Map<String, dynamic>>>(
-                      future: SupabaseService()
-                          .obtenerCalendarioPorCurso(cursoId, soloPublicos: false),
-                      builder: (context, snap) {
-                        if (snap.connectionState == ConnectionState.waiting) {
-                          return const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          );
-                        }
-
-                        final hoy = DateTime.now();
-                        final desde = DateTime(hoy.year, hoy.month, hoy.day);
-                        final proximos = (snap.data ?? []).where((e) {
-                          final f = DateTime.tryParse(
-                              (e['fecha'] ?? '').toString());
-                          return f != null && !f.isBefore(desde);
-                        }).toList()
-                          ..sort((a, b) => (a['fecha'] ?? '')
-                              .toString()
-                              .compareTo((b['fecha'] ?? '').toString()));
-
-                        if (proximos.isEmpty) {
-                          return Text(
-                            'No hay fechas agendadas. Tocá "Ver Calendario Completo" para cargar una.',
-                            style: TextStyle(
-                                fontSize: 12.5,
-                                color: Colors.deepOrange.shade700),
-                          );
-                        }
-
-                        return Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: proximos.take(4).map((e) {
-                            final f = DateTime.parse(e['fecha'].toString());
-                            final tipo = (e['tipo_evento'] ?? '')
-                                .toString()
-                                .toUpperCase();
-                            final icono = tipo == 'EVALUACION'
-                                ? Icons.quiz_rounded
-                                : tipo == 'REUNION'
-                                    ? Icons.people_rounded
-                                    : Icons.assignment_rounded;
-                            final color = tipo == 'EVALUACION'
-                                ? Colors.purple
-                                : tipo == 'REUNION'
-                                    ? Colors.green
-                                    : Colors.blue;
-                            final dd = f.day.toString().padLeft(2, '0');
-                            final mm = f.month.toString().padLeft(2, '0');
-
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(10),
-                                border:
-                                    Border.all(color: Colors.orange.shade200),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(icono, size: 16, color: color),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '$dd/$mm - ${e['titulo'] ?? 'Evento'}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
+            _FechasImportantesCard(
+              cursoId: cursoId,
+              materiaId: materiaId,
+              cursoNombre: identificadorDivision,
             ),
             const SizedBox(height: 28.0),
             
@@ -491,7 +362,7 @@ class PanelGestionMateria extends StatelessWidget {
                         border: Border.all(color: Colors.deepOrange.shade200),
                       ),
                       child: const Text(
-                        'Agendá un examen o entrega de TP. Quedará visible en el Calendario General escolar.',
+                        'Agendá un examen o entrega de TP. Quedará visible en el calendario de esta materia y para las familias del curso.',
                         style: TextStyle(fontSize: 13, height: 1.4),
                       ),
                     ),
@@ -608,12 +479,13 @@ class PanelGestionMateria extends StatelessWidget {
                       fecha: fechaStr,
                       tipoEvento: tipoSeleccionado,
                       cursoId: cursoId,
+                      materiaId: materiaId,
                     );
                     if (ctx.mounted) Navigator.pop(ctx);
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('✅ "$titulo" agendado en el Calendario General.'),
+                          content: Text('✅ "$titulo" agendado en el calendario de $nombreAsignatura.'),
                           backgroundColor: Colors.green.shade800,
                         ),
                       );
@@ -664,6 +536,288 @@ class PanelGestionMateria extends StatelessWidget {
         trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
         onTap: onTap,
       ),
+    );
+  }
+}
+
+/// Tarjeta de próximas evaluaciones y entregas del curso.
+///
+/// Va aparte y con estado propio porque cada chip permite modificar o eliminar
+/// el evento, y después hay que volver a leer la lista.
+class _FechasImportantesCard extends StatefulWidget {
+  final String cursoId;
+  final String materiaId;
+  final String cursoNombre;
+
+  const _FechasImportantesCard({
+    required this.cursoId,
+    required this.materiaId,
+    required this.cursoNombre,
+  });
+
+  @override
+  State<_FechasImportantesCard> createState() => _FechasImportantesCardState();
+}
+
+class _FechasImportantesCardState extends State<_FechasImportantesCard> {
+  final _service = SupabaseService();
+  late Future<List<Map<String, dynamic>>> _futuro;
+
+  /// curso_id de los cursos que dicta el usuario, para saber si puede tocar
+  /// los eventos heredados que no tienen autor.
+  Set<String> _cursosDelDocente = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _futuro = _cargar();
+  }
+
+  Future<List<Map<String, dynamic>>> _cargar() async {
+    try {
+      final docenteId = await _service.obtenerDocenteIdActual();
+      final materias = await _service.fetchMateriasPorDocente(docenteId);
+      _cursosDelDocente = materias.map((m) => m['curso_id'].toString()).toSet();
+    } catch (_) {
+      _cursosDelDocente = {};
+    }
+    return _service.obtenerCalendarioPorCurso(widget.cursoId,
+        soloPublicos: false, materiaId: widget.materiaId);
+  }
+
+  void _recargar() => setState(() => _futuro = _cargar());
+
+  Future<void> _abrirCalendarioEn(DateTime fecha) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CalendarioDocente(
+          cursoIdInicial: widget.cursoId,
+          materiaIdInicial: widget.materiaId,
+          cursNombreInicial: widget.cursoNombre,
+          fechaInicial: fecha,
+        ),
+      ),
+    );
+    _recargar();
+  }
+
+  Future<void> _eliminar(Map<String, dynamic> evento) async {
+    final titulo = (evento['titulo'] ?? 'este evento').toString();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Eliminar evento'),
+        content: Text('¿Eliminar "$titulo" del calendario?\n\n'
+            'Las familias dejan de verlo en su cronograma.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    try {
+      await _service.eliminarEventoCalendario(
+          (evento['evento_id'] ?? evento['id']).toString());
+      _recargar();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Se eliminó "$titulo"'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.orange.withAlpha(100), width: 1.5),
+      ),
+      color: Colors.orange.shade50.withAlpha(120),
+      child: Padding(
+        padding: const EdgeInsets.all(18.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.event_available_rounded, color: Colors.deepOrange, size: 22),
+                    SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        'Fechas Importantes (Evaluaciones y Entregas)',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.deepOrange),
+                      ),
+                    ),
+                  ],
+                ),
+                TextButton.icon(
+                  onPressed: () => _abrirCalendarioEn(DateTime.now()),
+                  icon: const Icon(Icons.calendar_month_rounded, size: 14),
+                  label: const Text('Ver Calendario Completo', style: TextStyle(fontSize: 12)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Fechas reales desde acad_calendario. Antes eran dos chips fijos
+            // escritos a mano, que se mostraban siempre aunque no hubiera nada
+            // agendado.
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: _futuro,
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  );
+                }
+
+                final hoy = DateTime.now();
+                final desde = DateTime(hoy.year, hoy.month, hoy.day);
+                final proximos = (snap.data ?? []).where((e) {
+                  final f = DateTime.tryParse((e['fecha'] ?? '').toString());
+                  return f != null && !f.isBefore(desde);
+                }).toList()
+                  ..sort((a, b) => (a['fecha'] ?? '')
+                      .toString()
+                      .compareTo((b['fecha'] ?? '').toString()));
+
+                if (proximos.isEmpty) {
+                  return Text(
+                    'No hay fechas agendadas. Tocá "Ver Calendario Completo" para cargar una.',
+                    style: TextStyle(fontSize: 12.5, color: Colors.deepOrange.shade700),
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: proximos.take(4).map(_chipEvento).toList(),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Tocá una fecha para modificarla o eliminarla.',
+                      style: TextStyle(fontSize: 11, color: Colors.deepOrange.shade400),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chipEvento(Map<String, dynamic> e) {
+    final f = DateTime.parse(e['fecha'].toString());
+    final tipo = (e['tipo_evento'] ?? '').toString().toUpperCase();
+    final icono = tipo == 'EVALUACION'
+        ? Icons.quiz_rounded
+        : tipo == 'REUNION'
+            ? Icons.people_rounded
+            : Icons.assignment_rounded;
+    final color = tipo == 'EVALUACION'
+        ? Colors.purple
+        : tipo == 'REUNION'
+            ? Colors.green
+            : Colors.blue;
+    final dd = f.day.toString().padLeft(2, '0');
+    final mm = f.month.toString().padLeft(2, '0');
+
+    // Sólo el docente que creó el evento (o dirección) puede tocarlo; la base
+    // aplica la misma regla, así que no se ofrecen acciones que van a fallar.
+    final puedeEditar =
+        _service.puedeEditarEvento(e, cursosDelDocente: _cursosDelDocente);
+
+    final contenido = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icono, size: 16, color: color),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '$dd/$mm - ${e['titulo'] ?? 'Evento'}',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+          ),
+          if (puedeEditar) ...[
+            const SizedBox(width: 4),
+            Icon(Icons.more_vert_rounded, size: 15, color: Colors.grey.shade500),
+          ],
+        ],
+      ),
+    );
+
+    if (!puedeEditar) return contenido;
+
+    return PopupMenuButton<String>(
+      tooltip: 'Acciones',
+      position: PopupMenuPosition.under,
+      onSelected: (v) {
+        if (v == 'editar') {
+          _abrirCalendarioEn(f);
+        } else if (v == 'eliminar') {
+          _eliminar(e);
+        }
+      },
+      itemBuilder: (_) => const [
+        PopupMenuItem(
+          value: 'editar',
+          child: Row(children: [
+            Icon(Icons.edit_rounded, size: 18),
+            SizedBox(width: 10),
+            Text('Modificar'),
+          ]),
+        ),
+        PopupMenuItem(
+          value: 'eliminar',
+          child: Row(children: [
+            Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
+            SizedBox(width: 10),
+            Text('Eliminar', style: TextStyle(color: Colors.red)),
+          ]),
+        ),
+      ],
+      child: contenido,
     );
   }
 }

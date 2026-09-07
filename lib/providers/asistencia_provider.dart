@@ -7,17 +7,41 @@ class AsistenciaProvider extends ChangeNotifier {
 
   List<AlumnoAsistencia> _alumnos = [];
   bool _isLoading = false;
+  bool _yaGuardadaHoy = false;
 
   List<AlumnoAsistencia> get alumnos => _alumnos;
   bool get isLoading => _isLoading;
 
-  Future<void> cargarAlumnos({String? cursoId}) async {
+  /// true si al cargar ya existía una planilla registrada para hoy: la vista
+  /// pasa a "modo edición" (precargada) y evita una segunda toma.
+  bool get yaGuardadaHoy => _yaGuardadaHoy;
+
+  Future<void> cargarAlumnos({String? cursoId, String? materiaId}) async {
     _isLoading = true;
+    _yaGuardadaHoy = false;
     _alumnos = []; // Limpiamos la lista anterior para evitar "Bad state: No element"
     notifyListeners();
 
     try {
       _alumnos = await _supabaseService.fetchAlumnos(cursoId: cursoId);
+
+      // Precargar la planilla del día si ya se tomó lista.
+      if (cursoId != null) {
+        final previa = await _supabaseService.obtenerAsistenciaDelDia(
+          cursoId: cursoId,
+          materiaId: materiaId,
+          fecha: DateTime.now(),
+        );
+        if (previa != null) {
+          _yaGuardadaHoy = true;
+          final estados = previa['estados'] as Map<String, EstadoAsistencia>;
+          _alumnos = _alumnos
+              .map((a) => estados.containsKey(a.id)
+                  ? a.copyWith(estado: estados[a.id])
+                  : a)
+              .toList();
+        }
+      }
     } catch (e) {
       debugPrint('Error al cargar alumnos: $e');
     } finally {
@@ -76,9 +100,10 @@ class AsistenciaProvider extends ChangeNotifier {
         tipoAsistencia: materiaId != null ? 'POR_MATERIA' : tipoAsistencia,
       );
 
-      // 2. Crear detalles en lote asociados a la cabecera
+      // 2. Crear detalles en lote asociados a la cabecera (reemplaza los previos)
       await _supabaseService.insertDetalles(cabeceraId, _alumnos);
-      
+
+      _yaGuardadaHoy = true;
       return true;
     } catch (e) {
       debugPrint('Error al guardar la planilla en Supabase: $e');

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/supabase_service.dart';
 
 class PanelBancoEvaluaciones extends StatefulWidget {
@@ -36,42 +38,40 @@ class _PanelBancoEvaluacionesState extends State<PanelBancoEvaluaciones> {
   Future<void> _cargarBanco() async {
     setState(() => _loading = true);
     try {
-      final res = await Supabase.instance.client
-          .from('banco_evaluaciones')
-          .select()
-          .eq('materia_id', widget.materiaId)
-          .order('created_at', ascending: false);
-      _evaluaciones = List<Map<String, dynamic>>.from(res);
+      _evaluaciones = await _service.obtenerBancoEvaluaciones(
+        materiaId: widget.materiaId,
+        cursoId: widget.cursoId,
+      );
     } catch (e) {
-      // Fallback in memory o si la tabla no existe aún
-      if (_evaluaciones.isEmpty) {
-        _evaluaciones = [
-          {
-            'id': 'mock-1',
-            'materia_id': widget.materiaId,
-            'titulo': 'Examen Integrador de Mitosis y Meiosis',
-            'descripcion': 'Evaluación escrita con esquema comparativo y preguntas de múltiple opción.',
-            'tipo': 'Parcial Trimestral',
-            'archivo_url': 'evaluacion_mitosis_v2.pdf',
-            'estado': 'APROBADA',
-            'subido_por': 'Prof. Danilo Gomez',
-            'created_at': DateTime.now().subtract(const Duration(days: 10)).toIso8601String(),
-          },
-          {
-            'id': 'mock-2',
-            'materia_id': widget.materiaId,
-            'titulo': 'Trabajo Práctico Rúbrica: Sistema Endocrino',
-            'descripcion': 'Guía de investigación colaborativa en laboratorio con defensa oral.',
-            'tipo': 'Trabajo Práctico',
-            'archivo_url': 'tp_sistema_endocrino_rubrica.docx',
-            'estado': 'PENDIENTE DE APROBACIÓN',
-            'subido_por': 'Prof. Florencia Viero',
-            'created_at': DateTime.now().subtract(const Duration(days: 2)).toIso8601String(),
-          },
-        ];
-      }
+      debugPrint('Error cargando banco de evaluaciones: $e');
+      _evaluaciones = [];
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _descargar(Map<String, dynamic> item) async {
+    final path = item['storage_path']?.toString();
+    if (path == null || path.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Esta evaluación no tiene archivo adjunto.')),
+      );
+      return;
+    }
+    try {
+      final url = await _service.urlFirmadaStorage('banco-evaluaciones', path);
+      final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo abrir el archivo.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al descargar: $e')),
+        );
+      }
     }
   }
 
@@ -81,129 +81,156 @@ class _PanelBancoEvaluacionesState extends State<PanelBancoEvaluaciones> {
     String tipoSel = 'Parcial Trimestral';
     final user = Supabase.instance.client.auth.currentUser;
     final nombreDocente = user?.userMetadata?['nombre'] as String? ?? user?.email ?? 'Docente';
+    List<int>? archivoBytes;
+    String? archivoNombre;
+    bool subiendo = false;
 
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(Icons.upload_file_rounded, color: Theme.of(ctx).colorScheme.primary),
-            const SizedBox(width: 10),
-            const Expanded(child: Text('Subir Evaluación al Banco', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
             children: [
-              Text('Asignatura: ${widget.nombreAsignatura}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13)),
-              const SizedBox(height: 16),
-              TextField(
-                controller: tituloCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Título del Examen / TP',
-                  hintText: 'Ej. Examen Integrador de Genética',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<String>(
-                value: tipoSel,
-                decoration: InputDecoration(
-                  labelText: 'Tipo de Evaluación',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                items: ['Parcial Trimestral', 'Trabajo Práctico', 'Rúbrica / Proyecto Integrador', 'Recuperatorio']
-                    .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                    .toList(),
-                onChanged: (val) => tipoSel = val ?? tipoSel,
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: descCtrl,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: 'Descripción / Consignas principales',
-                  hintText: 'Breve resumen de los contenidos evaluados...',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(ctx).colorScheme.primaryContainer.withAlpha(50),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Theme.of(ctx).colorScheme.primary.withAlpha(100), style: BorderStyle.solid),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.attach_file_rounded, color: Theme.of(ctx).colorScheme.primary),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Adjuntar archivo (.docx / .pdf)\n*Se subirá al servidor para revisión del Administrador',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              Icon(Icons.upload_file_rounded, color: Theme.of(ctx).colorScheme.primary),
+              const SizedBox(width: 10),
+              const Expanded(child: Text('Subir Evaluación al Banco', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
             ],
           ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          FilledButton.icon(
-            icon: const Icon(Icons.check_rounded, size: 18),
-            label: const Text('Subir Propuesta'),
-            onPressed: () async {
-              if (tituloCtrl.text.trim().isEmpty) return;
-              final nuevo = {
-                'materia_id': widget.materiaId,
-                'titulo': tituloCtrl.text.trim(),
-                'descripcion': descCtrl.text.trim(),
-                'tipo': tipoSel,
-                'archivo_url': '${tituloCtrl.text.trim().replaceAll(' ', '_').toLowerCase()}.docx',
-                'estado': _esAdmin ? 'APROBADA' : 'PENDIENTE DE APROBACIÓN',
-                'subido_por': nombreDocente,
-                'created_at': DateTime.now().toIso8601String(),
-              };
-
-              try {
-                await Supabase.instance.client.from('banco_evaluaciones').insert(nuevo);
-                // Notificar a admins cuando un docente sube una evaluación para aprobación
-                if (!_esAdmin) {
-                  _service.obtenerAuthIdsAdministracion().then((adminIds) {
-                    _service.notificarSistema(
-                      asunto: '📋 Evaluación pendiente de aprobación: ${tituloCtrl.text.trim()}',
-                      texto: '$nombreDocente subió la evaluación "${tituloCtrl.text.trim()}" (${widget.nombreAsignatura}) para su revisión y aprobación.',
-                      destinatariosAuthIds: adminIds,
-                    );
-                  });
-                }
-              } catch (_) {
-                // Si la tabla aún no existe en DB, guardamos en memoria y mostramos aviso
-              }
-              setState(() {
-                _evaluaciones.insert(0, {...nuevo, 'id': 'local-${DateTime.now().millisecondsSinceEpoch}'});
-              });
-              if (mounted) {
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(_esAdmin
-                        ? '✅ Evaluación agregada y APROBADA en el banco institucional.'
-                        : '📤 Evaluación enviada a revisión. El Administrador recibirá una notificación para aprobarla.'),
-                    backgroundColor: _esAdmin ? Colors.green : Colors.blue,
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Asignatura: ${widget.nombreAsignatura}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13)),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: tituloCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Título del Examen / TP',
+                    hintText: 'Ej. Examen Integrador de Genética',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                );
-              }
-            },
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  initialValue: tipoSel,
+                  decoration: InputDecoration(
+                    labelText: 'Tipo de Evaluación',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  items: ['Parcial Trimestral', 'Trabajo Práctico', 'Rúbrica / Proyecto Integrador', 'Recuperatorio']
+                      .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                      .toList(),
+                  onChanged: (val) => tipoSel = val ?? tipoSel,
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: descCtrl,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: 'Descripción / Consignas principales',
+                    hintText: 'Breve resumen de los contenidos evaluados...',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () async {
+                    final res = await FilePicker.platform.pickFiles(
+                      withData: true,
+                      type: FileType.custom,
+                      allowedExtensions: ['pdf', 'doc', 'docx'],
+                    );
+                    if (res != null && res.files.isNotEmpty) {
+                      setDlg(() {
+                        archivoBytes = res.files.first.bytes;
+                        archivoNombre = res.files.first.name;
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(ctx).colorScheme.primaryContainer.withAlpha(50),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Theme.of(ctx).colorScheme.primary.withAlpha(100)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(archivoNombre == null ? Icons.attach_file_rounded : Icons.check_circle_rounded,
+                            color: Theme.of(ctx).colorScheme.primary),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            archivoNombre ?? 'Adjuntar archivo (.pdf / .doc / .docx)',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ],
+          actions: [
+            TextButton(onPressed: subiendo ? null : () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            FilledButton.icon(
+              icon: subiendo
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.check_rounded, size: 18),
+              label: const Text('Subir'),
+              onPressed: subiendo
+                  ? null
+                  : () async {
+                      if (tituloCtrl.text.trim().isEmpty) return;
+                      setDlg(() => subiendo = true);
+                      try {
+                        final fila = await _service.subirEvaluacionBanco(
+                          materiaId: widget.materiaId,
+                          cursoId: widget.cursoId,
+                          titulo: tituloCtrl.text.trim(),
+                          descripcion: descCtrl.text.trim(),
+                          tipo: tipoSel,
+                          bytes: archivoBytes,
+                          fileName: archivoNombre,
+                          aprobarAlSubir: _esAdmin,
+                        );
+                        if (!_esAdmin) {
+                          _service.obtenerAuthIdsAdministracion().then((adminIds) {
+                            _service.notificarSistema(
+                              asunto: '📋 Evaluación pendiente de aprobación: ${tituloCtrl.text.trim()}',
+                              texto: '$nombreDocente subió la evaluación "${tituloCtrl.text.trim()}" (${widget.nombreAsignatura}) para su revisión y aprobación.',
+                              destinatariosAuthIds: adminIds,
+                            );
+                          });
+                        }
+                        if (mounted) setState(() => _evaluaciones.insert(0, fila));
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(_esAdmin
+                                  ? '✅ Evaluación agregada y APROBADA en el banco institucional.'
+                                  : '📤 Evaluación enviada a revisión. El Administrador recibirá una notificación para aprobarla.'),
+                              backgroundColor: _esAdmin ? Colors.green : Colors.blue,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setDlg(() => subiendo = false);
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(content: Text('Error al subir: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      }
+                    },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -213,12 +240,12 @@ class _PanelBancoEvaluacionesState extends State<PanelBancoEvaluaciones> {
       item['estado'] = nuevoEstado;
     });
     try {
-      if (item['id'] != null && !item['id'].toString().startsWith('mock-')) {
-        await Supabase.instance.client
-            .from('banco_evaluaciones')
-            .update({'estado': nuevoEstado}).eq('id', item['id']);
+      if (item['id'] != null) {
+        await _service.cambiarEstadoEvaluacionBanco(item['id'].toString(), nuevoEstado);
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Error cambiando estado de evaluación: $e');
+    }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -374,13 +401,15 @@ class _PanelBancoEvaluacionesState extends State<PanelBancoEvaluaciones> {
                                   ],
                                 ),
                                 OutlinedButton.icon(
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('📥 Descargando archivo: ${item['archivo_url'] ?? 'evaluacion.docx'}...')),
-                                    );
-                                  },
+                                  onPressed: (item['storage_path'] != null && item['storage_path'].toString().isNotEmpty)
+                                      ? () => _descargar(item)
+                                      : null,
                                   icon: const Icon(Icons.download_rounded, size: 16),
-                                  label: const Text('Descargar Word/PDF', style: TextStyle(fontSize: 12)),
+                                  label: Text(
+                                      (item['storage_path'] != null && item['storage_path'].toString().isNotEmpty)
+                                          ? 'Descargar archivo'
+                                          : 'Sin archivo',
+                                      style: const TextStyle(fontSize: 12)),
                                   style: OutlinedButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                     minimumSize: Size.zero,

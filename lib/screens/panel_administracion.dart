@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/supabase_service.dart';
 import '../services/print_helper.dart';
 import '../widgets/brand_widgets.dart';
@@ -42,11 +44,14 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
   String? _repMateriaId;
   List<Map<String, dynamic>> _repositorioArchivos = [];
 
-  // Estados de EOE (Gabinete Psicopedagógico)
-  Map<String, dynamic>? _eoeSelectedAlumno;
-  final Map<String, List<Map<String, String>>> _eoeInformes = {};
-  final Map<String, List<Map<String, String>>> _eoeBitacora = {};
-  final Map<String, List<Map<String, dynamic>>> _eoeEvaluacionesDocente = {};
+  // Estados de EOE (Gabinete Psicopedagógico) — persistido en eoe_ficha /
+  // eoe_bitacora / eoe_documentos (ver eoe_banco_migration.sql).
+  Map<String, dynamic>? _eoeSelectedFicha;
+  List<Map<String, dynamic>> _eoeFichas = [];
+  List<Map<String, dynamic>> _eoeBitacora = [];
+  List<Map<String, dynamic>> _eoeDocumentos = [];
+  bool _eoeLoading = false;
+  bool _eoeDetalleLoading = false;
 
   // Declaraciones Juradas de Profesores y Horarios
   final Map<String, Map<String, dynamic>> _ddjjProfesores = {};
@@ -148,65 +153,37 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
       ];
     }
 
-    // Inicializar mock de EOE
-    int adCount = 0;
-    for (int i = 0; i < _alumnos.length; i++) {
-      final a = _alumnos[i];
-      final legajoId = a['legajo_id'] as String;
-      
-      // Mapear adecuaciones curriculares de datos_demograficos
-      final demo = Map<String, dynamic>.from(a['datos_demograficos'] as Map? ?? {});
-      bool hasAdecuacion = demo['adecuacion_curricular'] == true || a['adecuacion_curricular'] == true;
-      
-      // Si no hay alumnos con adecuación, marcar los 3 primeros como ficticios/activos por defecto para demostración
-      if (!hasAdecuacion && i < 3 && _alumnos.where((al) => al['adecuacion_curricular'] == true).isEmpty) {
-        hasAdecuacion = true;
-        demo['adecuacion_curricular'] = true;
-        demo['tipo_adecuacion'] = i == 0 ? 'Metodológica (Tiempo Extendido)' : (i == 1 ? 'De Acceso (Consignas Visuales)' : 'De Contenido');
-        demo['detalles_adecuacion'] = 'Requiere segmentación de consignas, tiempo adicional en evaluaciones escritas (+20 min) y acompañamiento personalizado.';
-        a['datos_demograficos'] = demo;
-      }
+  }
 
-      if (hasAdecuacion) {
-        adCount++;
-        a['adecuacion_curricular'] = true;
-        a['tipo_adecuacion'] = demo['tipo_adecuacion'] ?? a['tipo_adecuacion'] ?? 'Metodológica';
-        a['detalles_adecuacion'] = demo['detalles_adecuacion'] ?? a['detalles_adecuacion'] ?? 'Adecuación pedagógica activa según informe EOE.';
-      }
-
-      _eoeInformes.putIfAbsent(legajoId, () => [
-        {'id': '1', 'nombre': 'Diagnóstico Psicológico y Neurocognitivo (EOE).pdf', 'fecha': '12/03/2026', 'especialista': 'Lic. Sofia Martinez (Psicopedagoga)'},
-        {'id': '2', 'nombre': 'Pautas de Acompañamiento en el Aula.docx', 'fecha': '25/03/2026', 'especialista': 'Equipo EOE'}
-      ]);
-
-      _eoeBitacora.putIfAbsent(legajoId, () => [
-        {'id': '1', 'autor': 'Preceptor Martin', 'nota': 'Se observa buena predisposición. En exámenes escritos requiere más tiempo pero logra concentrarse.', 'fecha': '15/06/2026'},
-        {'id': '2', 'autor': 'Docente Lengua', 'nota': 'Se aplicó evaluación oral complementaria. Responde muy bien a las consignas integradoras.', 'fecha': '30/06/2026'}
-      ]);
-
-      _eoeEvaluacionesDocente.putIfAbsent(legajoId, () => [
-        {
-          'id': '1',
-          'materia': 'Construcción de la Ciudadanía',
-          'docente': 'Daniel Gomez',
-          'informe_original': 'Evaluación Escrita - Unidad 2 (Original).pdf',
-          'fecha_evaluacion': '18/07/2026',
-          'observaciones_eoe': 'Se rediseña con tipografía clara (Arial 14), división de consignas largas y tiempo extendido (+25 min).',
-          'archivo_adecuado': 'Evaluación Escrita - Unidad 2 (ADECUADA por EOE).pdf',
-          'estado': 'Adecuada',
-        },
-        {
-          'id': '2',
-          'materia': 'Historia 1°',
-          'docente': 'Prof. Titular',
-          'informe_original': 'Trabajo Práctico Integrador - Revoluciones.docx',
-          'fecha_evaluacion': '24/07/2026',
-          'observaciones_eoe': 'Pendiente de revisión pedagógica por el gabinete.',
-          'archivo_adecuado': null,
-          'estado': 'Pendiente de Adecuación',
-        },
-      ]);
+  /// Carga las fichas EOE reales (eoe_ficha + roster). Se llama desde _cargarDatos.
+  Future<void> _cargarEoe() async {
+    setState(() => _eoeLoading = true);
+    try {
+      final fichas = await _supabaseService.obtenerFichasEoe();
+      setState(() => _eoeFichas = fichas);
+    } catch (e) {
+      debugPrint('Error cargando EOE: $e');
+    } finally {
+      if (mounted) setState(() => _eoeLoading = false);
     }
+  }
+
+  Future<void> _eoeSeleccionar(Map<String, dynamic> ficha) async {
+    setState(() {
+      _eoeSelectedFicha = ficha;
+      _eoeDetalleLoading = true;
+      _eoeBitacora = [];
+      _eoeDocumentos = [];
+    });
+    final legajoId = ficha['legajo_id'].toString();
+    final bit = await _supabaseService.obtenerBitacoraEoe(legajoId);
+    final docs = await _supabaseService.obtenerDocumentosEoe(legajoId);
+    if (!mounted) return;
+    setState(() {
+      _eoeBitacora = bit;
+      _eoeDocumentos = docs;
+      _eoeDetalleLoading = false;
+    });
   }
 
   final List<String> _mesesNombres = [
@@ -266,6 +243,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
         }
         _inicializarRepositorioYEOE();
       });
+      await _cargarEoe();
       await _cargarAsistenciaMensual();
       await _cargarObservacionesAulicas();
     } catch (e) {
@@ -4058,10 +4036,8 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
   }
 
   Widget _buildModuloEdeIndependiente(ColorScheme colorScheme) {
-    final listReales = _alumnos.where((a) => a['adecuacion_curricular'] == true).toList();
-
-    if (_eoeSelectedAlumno != null) {
-      return _buildEoeDetailView(_eoeSelectedAlumno!, colorScheme);
+    if (_eoeSelectedFicha != null) {
+      return _buildEoeDetailView(_eoeSelectedFicha!, colorScheme);
     }
 
     return Padding(
@@ -4084,80 +4060,94 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                   ),
                   SizedBox(height: 4),
                   Text(
-                    'Módulo independiente para la gestión integral de informes docentes, fechas programadas y archivos adecuados.',
+                    'Marcá alumnos ya inscriptos, completá su ficha y documentos. Los docentes vinculados los verán en su portal.',
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ],
               ),
-              ElevatedButton.icon(
-                onPressed: _abrirModalActivarAdecuacionEOE,
-                icon: const Icon(Icons.person_add_alt_1_rounded),
-                label: const Text('Activar Adecuación'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Recargar',
+                    onPressed: _eoeLoading ? null : _cargarEoe,
+                    icon: const Icon(Icons.refresh_rounded),
+                  ),
+                  const SizedBox(width: 4),
+                  ElevatedButton.icon(
+                    onPressed: () => _abrirModalFichaEoe(),
+                    icon: const Icon(Icons.person_add_alt_1_rounded),
+                    label: const Text('Activar Adecuación'),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
+                  ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: listReales.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No hay alumnos registrados con Adecuación Curricular Activa.\nPulse "Activar Adecuación" para agregar uno.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey, height: 1.4),
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: listReales.length,
-                    itemBuilder: (context, index) {
-                      final al = listReales[index];
-                      final tipo = al['tipo_adecuacion'] ?? 'General';
-                      
-                      return Card(
-                        elevation: 0,
-                        margin: const EdgeInsets.only(bottom: 10),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(color: Colors.indigo.withAlpha(50)),
+            child: _eoeLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _eoeFichas.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No hay alumnos registrados con Adecuación Curricular Activa.\nPulsá "Activar Adecuación" para agregar uno.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey, height: 1.4),
                         ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          leading: CircleAvatar(
-                            radius: 24,
-                            backgroundColor: Colors.indigo.shade50,
-                            child: Icon(Icons.psychology_rounded, color: Colors.indigo.shade800, size: 28),
-                          ),
-                          title: Text(al['nombre'] ?? al['nombre_completo'] ?? 'Alumno', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 4),
-                              Text('DNI: ${al['dni']} | Tipo: $tipo', style: const TextStyle(fontWeight: FontWeight.w500)),
-                              if (al['detalles_adecuacion'] != null && (al['detalles_adecuacion'] as String).isNotEmpty)
-                                Text('Pautas: ${al['detalles_adecuacion']}', style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis),
-                            ],
-                          ),
-                          trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 18, color: Colors.indigo),
-                          onTap: () {
-                            setState(() {
-                              _eoeSelectedAlumno = al;
-                            });
-                          },
-                        ),
-                      );
-                    },
-                  ),
+                      )
+                    : ListView.builder(
+                        itemCount: _eoeFichas.length,
+                        itemBuilder: (context, index) {
+                          final al = _eoeFichas[index];
+                          final tipo = al['tipo_adecuacion'] ?? 'General';
+                          final detalles = (al['detalles'] ?? '').toString();
+                          return Card(
+                            elevation: 0,
+                            margin: const EdgeInsets.only(bottom: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(color: Colors.indigo.withAlpha(50)),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              leading: CircleAvatar(
+                                radius: 24,
+                                backgroundColor: Colors.indigo.shade50,
+                                child: Icon(Icons.psychology_rounded, color: Colors.indigo.shade800, size: 28),
+                              ),
+                              title: Text(al['nombre_completo'] ?? 'Alumno',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 4),
+                                  Text('${al['curso_nombre'] ?? ''} · Tipo: $tipo',
+                                      style: const TextStyle(fontWeight: FontWeight.w500)),
+                                  if (detalles.isNotEmpty)
+                                    Text('Pautas: $detalles',
+                                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  if (al['tiene_ficha'] != true)
+                                    const Text('Sólo flag heredado — abrí para completar la ficha',
+                                        style: TextStyle(fontSize: 11, color: Colors.orange)),
+                                ],
+                              ),
+                              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 18, color: Colors.indigo),
+                              onTap: () => _eoeSeleccionar(al),
+                            ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEoeDetailView(Map<String, dynamic> al, ColorScheme colorScheme) {
-    final legajoId = al['legajo_id'] ?? al['id'] ?? '';
-    final evaluaciones = _eoeEvaluacionesDocente[legajoId] ?? [];
-    final informes = _eoeInformes[legajoId] ?? [];
-    final bitacora = _eoeBitacora[legajoId] ?? [];
+  Widget _buildEoeDetailView(Map<String, dynamic> ficha, ColorScheme colorScheme) {
+    final legajoId = (ficha['legajo_id'] ?? '').toString();
+    final form = Map<String, dynamic>.from(ficha['datos_formulario'] as Map? ?? {});
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -4168,10 +4158,18 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
             children: [
               IconButton(
                 icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: () => setState(() => _eoeSelectedAlumno = null),
+                onPressed: () => setState(() => _eoeSelectedFicha = null),
               ),
               const SizedBox(width: 8),
-              const Text('Ficha Psicopedagógica del Alumno', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Expanded(
+                child: Text('Ficha Psicopedagógica del Alumno',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+              TextButton.icon(
+                onPressed: () => _abrirModalFichaEoe(ficha: ficha),
+                icon: const Icon(Icons.edit_rounded, size: 16),
+                label: const Text('Editar ficha'),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -4184,22 +4182,46 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
             ),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.assignment_ind_rounded, color: Colors.indigo.shade800, size: 36),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(al['nombre'] ?? al['nombre_completo'] ?? 'Alumno', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.indigo.shade900)),
-                        const SizedBox(height: 4),
-                        Text('DNI: ${al['dni']} | Tipo: ${al['tipo_adecuacion']}', style: TextStyle(color: Colors.indigo.shade900, fontSize: 12)),
-                        const SizedBox(height: 4),
-                        Text('Pautas: ${al['detalles_adecuacion']}', style: TextStyle(color: Colors.indigo.shade900, fontSize: 12, height: 1.3)),
-                      ],
-                    ),
+                  Row(
+                    children: [
+                      Icon(Icons.assignment_ind_rounded, color: Colors.indigo.shade800, size: 36),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(ficha['nombre_completo'] ?? 'Alumno',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.indigo.shade900)),
+                            const SizedBox(height: 4),
+                            Text('DNI: ${ficha['dni'] ?? '—'} · Curso: ${ficha['curso_nombre'] ?? '—'} · Tipo: ${ficha['tipo_adecuacion'] ?? '—'}',
+                                style: TextStyle(color: Colors.indigo.shade900, fontSize: 12)),
+                            const SizedBox(height: 4),
+                            Text('Pautas: ${(ficha['detalles'] ?? '').toString().isEmpty ? 'Sin especificar' : ficha['detalles']}',
+                                style: TextStyle(color: Colors.indigo.shade900, fontSize: 12, height: 1.3)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
+                  if (form.entries.any((e) => (e.value ?? '').toString().isNotEmpty)) ...[
+                    const Divider(height: 20),
+                    ...form.entries
+                        .where((e) => (e.value ?? '').toString().isNotEmpty)
+                        .map((e) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text.rich(TextSpan(children: [
+                                TextSpan(
+                                    text: '${_eoeLabelCampo(e.key)}: ',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo.shade900)),
+                                TextSpan(
+                                    text: e.value.toString(),
+                                    style: TextStyle(fontSize: 12, color: Colors.indigo.shade900)),
+                              ])),
+                            )),
+                  ],
                 ],
               ),
             ),
@@ -4207,29 +4229,28 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
           const SizedBox(height: 16),
           Expanded(
             child: DefaultTabController(
-              length: 3,
+              length: 2,
               child: Column(
                 children: [
                   TabBar(
                     labelColor: colorScheme.primary,
                     unselectedLabelColor: colorScheme.onSurfaceVariant,
                     indicatorColor: colorScheme.primary,
-                    isScrollable: true,
                     tabs: const [
-                      Tab(icon: Icon(Icons.assignment_turned_in_rounded), text: 'Evaluaciones e Informes Docentes para Adecuar'),
-                      Tab(icon: Icon(Icons.folder_shared_rounded), text: 'Papeles de Gabinete (Confidencial)'),
-                      Tab(icon: Icon(Icons.forum_rounded), text: 'Bitácora de Acompañamiento'),
+                      Tab(icon: Icon(Icons.folder_shared_rounded), text: 'Documentos'),
+                      Tab(icon: Icon(Icons.forum_rounded), text: 'Bitácora'),
                     ],
                   ),
                   const SizedBox(height: 12),
                   Expanded(
-                    child: TabBarView(
-                      children: [
-                        _buildEoeEvaluacionesTab(legajoId, evaluaciones, colorScheme),
-                        _buildEoeConfidentialTab(legajoId, informes, colorScheme),
-                        _buildEoeBitacoraTab(legajoId, bitacora, colorScheme),
-                      ],
-                    ),
+                    child: _eoeDetalleLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : TabBarView(
+                            children: [
+                              _buildEoeDocumentosTab(legajoId, colorScheme),
+                              _buildEoeBitacoraTab(legajoId, colorScheme),
+                            ],
+                          ),
                   ),
                 ],
               ),
@@ -4240,160 +4261,106 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     );
   }
 
-  Widget _buildEoeEvaluacionesTab(String legajoId, List<Map<String, dynamic>> evaluaciones, ColorScheme colorScheme) {
+  Widget _buildEoeDocumentosTab(String legajoId, ColorScheme colorScheme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            const Text(
-              'Informes y evaluaciones originales subidas por los docentes con fecha de toma programada para ser adecuadas por el EOE:',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-            ),
-            ElevatedButton.icon(
-              onPressed: () => _subirEvaluacionDocenteEoeDialog(legajoId),
-              icon: const Icon(Icons.upload_file_rounded, size: 18),
-              label: const Text('Subir Informe / Evaluación Docente'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
-            ),
+            _eoeUploadBtn(legajoId, 'INFORME', 'Subir informe', Icons.medical_information_rounded, Colors.indigo),
+            _eoeUploadBtn(legajoId, 'PAUTAS', 'Subir pautas', Icons.rule_rounded, Colors.teal),
+            _eoeUploadBtn(legajoId, 'EVAL_ADECUADA', 'Subir evaluación adecuada', Icons.verified_rounded, Colors.green),
           ],
         ),
         const SizedBox(height: 12),
         Expanded(
-          child: evaluaciones.isEmpty
-              ? const Center(child: Text('No hay evaluaciones o informes pendientes de adecuación.', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)))
+          child: _eoeDocumentos.isEmpty
+              ? const Center(
+                  child: Text('Sin documentos cargados para este alumno.',
+                      style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)))
               : ListView.builder(
-                  itemCount: evaluaciones.length,
-                  itemBuilder: (context, index) {
-                    final ev = evaluaciones[index];
-                    final hasAdecuado = ev['archivo_adecuado'] != null && (ev['archivo_adecuado'] as String).isNotEmpty;
-
+                  itemCount: _eoeDocumentos.length,
+                  itemBuilder: (context, i) {
+                    final d = _eoeDocumentos[i];
+                    final tieneArchivo = (d['storage_path'] ?? '').toString().isNotEmpty;
+                    final esOriginal = d['categoria'] == 'EVAL_ORIGINAL';
                     return Card(
                       elevation: 0,
-                      margin: const EdgeInsets.only(bottom: 12),
+                      margin: const EdgeInsets.only(bottom: 10),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(color: hasAdecuado ? Colors.green.withAlpha(80) : Colors.orange.withAlpha(80)),
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                            color: esOriginal ? Colors.orange.withAlpha(90) : Colors.grey.withAlpha(60)),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.all(16.0),
+                        padding: const EdgeInsets.all(14),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(Icons.description_rounded, color: hasAdecuado ? Colors.green : Colors.orange, size: 28),
-                                const SizedBox(width: 12),
+                                Icon(_eoeIconoCategoria(d['categoria']),
+                                    color: esOriginal ? Colors.orange : colorScheme.primary),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(ev['informe_original'] ?? 'Evaluación / Informe', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                                      const SizedBox(height: 4),
-                                      Text('Materia: ${ev['materia']} | Docente: ${ev['docente']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                      Text(d['nombre'] ?? 'Documento',
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                      Text(
+                                          '${_eoeLabelCategoria(d['categoria'])} · ${d['estado'] ?? ''}'
+                                          '${(d['subido_por_nombre'] ?? '').toString().isNotEmpty ? ' · ${d['subido_por_nombre']}' : ''}',
+                                          style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                     ],
                                   ),
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: hasAdecuado ? Colors.green.shade50 : Colors.orange.shade50,
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: hasAdecuado ? Colors.green : Colors.orange),
+                                if (tieneArchivo)
+                                  IconButton(
+                                    icon: const Icon(Icons.download_rounded, size: 20),
+                                    tooltip: 'Descargar',
+                                    onPressed: () => _eoeDescargar(d),
                                   ),
-                                  child: Text(
-                                    ev['estado'] ?? (hasAdecuado ? 'Adecuada' : 'Pendiente'),
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: hasAdecuado ? Colors.green.shade900 : Colors.orange.shade900),
-                                  ),
-                                ),
                               ],
                             ),
-                            const SizedBox(height: 12),
-                            const Divider(height: 1),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              alignment: WrapAlignment.spaceBetween,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.calendar_today_rounded, size: 16, color: Colors.indigo),
-                                    const SizedBox(width: 6),
-                                    Flexible(
-                                      child: Text('Fecha de Toma Programada: ${ev['fecha_evaluacion'] ?? "Sin fecha fijada"}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.indigo)),
-                                    ),
-                                  ],
+                            if ((d['observaciones_eoe'] ?? '').toString().isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.indigo.withAlpha(15),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
-                                TextButton.icon(
-                                  onPressed: () => _editarFechaEvaluacionEoeDialog(legajoId, ev),
-                                  icon: const Icon(Icons.edit_calendar_rounded, size: 16),
-                                  label: const Text('Modificar Fecha', style: TextStyle(fontSize: 12)),
-                                ),
-                              ],
-                            ),
+                                child: Text('📝 ${d['observaciones_eoe']}',
+                                    style: const TextStyle(fontSize: 12, height: 1.3)),
+                              ),
+                            ],
                             const SizedBox(height: 8),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.indigo.withAlpha(15),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      const Expanded(child: Text('📝 Observaciones del Gabinete (EOE) para la Adecuación:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo))),
-                                      InkWell(
-                                        onTap: () => _editarObservacionesEoeDialog(legajoId, ev),
-                                        child: const Padding(
-                                          padding: EdgeInsets.symmetric(horizontal: 4.0),
-                                          child: Text('Editar', style: TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(ev['observaciones_eoe'] ?? 'Sin observaciones.', style: const TextStyle(fontSize: 13, height: 1.3)),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
                             Wrap(
-                              alignment: WrapAlignment.spaceBetween,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              spacing: 12,
-                              runSpacing: 8,
+                              spacing: 8,
                               children: [
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 20),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: Text(
-                                        hasAdecuado ? 'Archivo Adecuado Listo: ${ev['archivo_adecuado']}' : 'Aún no se ha subido el archivo con la evaluación adecuada.',
-                                        style: TextStyle(fontSize: 13, fontWeight: hasAdecuado ? FontWeight.bold : FontWeight.normal, color: hasAdecuado ? Colors.green.shade800 : Colors.grey),
-                                      ),
-                                    ),
-                                  ],
+                                TextButton.icon(
+                                  onPressed: () => _editarObservacionDocEoe(d),
+                                  icon: const Icon(Icons.edit_note_rounded, size: 16),
+                                  label: const Text('Observaciones', style: TextStyle(fontSize: 12)),
                                 ),
-                                ElevatedButton.icon(
-                                  onPressed: () => _subirArchivoAdecuadoEoeDialog(legajoId, ev),
-                                  icon: Icon(hasAdecuado ? Icons.refresh_rounded : Icons.upload_file_rounded, size: 16),
-                                  label: Text(hasAdecuado ? 'Reemplazar Adecuación' : 'Subir Archivo Adecuado'),
-                                  style: ElevatedButton.styleFrom(backgroundColor: hasAdecuado ? Colors.blue : Colors.green, foregroundColor: Colors.white),
-                                ),
+                                if (esOriginal)
+                                  TextButton.icon(
+                                    onPressed: () => _eoeUpload(legajoId, 'EVAL_ADECUADA',
+                                        observacionesDe: d),
+                                    icon: const Icon(Icons.upload_file_rounded, size: 16),
+                                    label: const Text('Subir versión adecuada', style: TextStyle(fontSize: 12)),
+                                  ),
+                                if (d['estado'] != 'ADECUADA')
+                                  TextButton.icon(
+                                    onPressed: () => _marcarDocEoe(d, 'ADECUADA'),
+                                    icon: const Icon(Icons.check_circle_rounded, size: 16, color: Colors.green),
+                                    label: const Text('Marcar adecuada',
+                                        style: TextStyle(fontSize: 12, color: Colors.green)),
+                                  ),
                               ],
                             ),
                           ],
@@ -4407,128 +4374,86 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     );
   }
 
-  void _subirEvaluacionDocenteEoeDialog(String legajoId) {
-    final formKey = GlobalKey<FormState>();
-    final matCtrl = TextEditingController(text: 'Matemática');
-    final docCtrl = TextEditingController(text: 'Prof. Gomez');
-    final fileCtrl = TextEditingController(text: 'Evaluación Unidad 3 - Original.pdf');
-    final fechaCtrl = TextEditingController(text: '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}');
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Subir Evaluación/Informe para Adecuar'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: Form(
-          key: formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: matCtrl,
-                  decoration: const InputDecoration(labelText: 'Materia / Asignatura', border: OutlineInputBorder()),
-                  validator: (v) => v == null || v.isEmpty ? 'Requerido' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: docCtrl,
-                  decoration: const InputDecoration(labelText: 'Docente a cargo', border: OutlineInputBorder()),
-                  validator: (v) => v == null || v.isEmpty ? 'Requerido' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: fileCtrl,
-                  decoration: const InputDecoration(labelText: 'Nombre del Archivo Original', border: OutlineInputBorder(), prefixIcon: Icon(Icons.attach_file)),
-                  validator: (v) => v == null || v.isEmpty ? 'Requerido' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: fechaCtrl,
-                  decoration: const InputDecoration(labelText: 'Fecha Programada para la Toma (DD/MM/AAAA)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_today)),
-                  validator: (v) => v == null || v.isEmpty ? 'Requerido' : null,
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () {
-              if (!formKey.currentState!.validate()) return;
-              setState(() {
-                final list = _eoeEvaluacionesDocente.putIfAbsent(legajoId, () => []);
-                list.insert(0, {
-                  'id': DateTime.now().millisecondsSinceEpoch.toString(),
-                  'materia': matCtrl.text.trim(),
-                  'docente': docCtrl.text.trim(),
-                  'informe_original': fileCtrl.text.trim(),
-                  'fecha_evaluacion': fechaCtrl.text.trim(),
-                  'observaciones_eoe': 'En proceso de análisis y adecuación curricular.',
-                  'archivo_adecuado': null,
-                  'estado': 'Pendiente de Adecuación',
-                });
-              });
-              Navigator.pop(context);
-              _mostrarExito('Evaluación cargada. Pendiente de adecuación por EOE.');
-            },
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
+  Widget _eoeUploadBtn(String legajoId, String categoria, String label, IconData icon, Color color) {
+    return OutlinedButton.icon(
+      onPressed: () => _eoeUpload(legajoId, categoria),
+      icon: Icon(icon, size: 16, color: color),
+      label: Text(label, style: TextStyle(fontSize: 12, color: color)),
+      style: OutlinedButton.styleFrom(side: BorderSide(color: color.withAlpha(120))),
     );
   }
 
-  void _editarFechaEvaluacionEoeDialog(String legajoId, Map<String, dynamic> ev) {
-    final ctrl = TextEditingController(text: ev['fecha_evaluacion']?.toString() ?? '');
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Modificar Fecha de Toma'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(labelText: 'Nueva Fecha (DD/MM/AAAA)', border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                ev['fecha_evaluacion'] = ctrl.text.trim();
-              });
-              Navigator.pop(context);
-              _mostrarExito('Fecha de toma programada actualizada.');
-            },
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
+  Future<void> _eoeUpload(String legajoId, String categoria,
+      {Map<String, dynamic>? observacionesDe}) async {
+    final res = await FilePicker.platform.pickFiles(
+      withData: true,
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'doc', 'docx', 'jpg', 'png'],
     );
+    if (res == null || res.files.isEmpty || res.files.first.bytes == null) return;
+    final f = res.files.first;
+    try {
+      await _supabaseService.subirDocumentoEoe(
+        legajoId: legajoId,
+        categoria: categoria,
+        bytes: f.bytes!,
+        fileName: f.name,
+        observaciones: observacionesDe?['observaciones_eoe']?.toString(),
+      );
+      if (_eoeSelectedFicha != null) await _eoeSeleccionar(_eoeSelectedFicha!);
+      _mostrarExito('Documento subido.');
+    } catch (e) {
+      _mostrarError('Error al subir el documento: $e');
+    }
   }
 
-  void _editarObservacionesEoeDialog(String legajoId, Map<String, dynamic> ev) {
-    final ctrl = TextEditingController(text: ev['observaciones_eoe']?.toString() ?? '');
+  Future<void> _eoeDescargar(Map<String, dynamic> d) async {
+    final path = (d['storage_path'] ?? '').toString();
+    if (path.isEmpty) return;
+    try {
+      final url = await _supabaseService.urlFirmadaStorage('eoe', path);
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      _mostrarError('Error al descargar: $e');
+    }
+  }
+
+  Future<void> _marcarDocEoe(Map<String, dynamic> d, String estado) async {
+    try {
+      await _supabaseService.actualizarDocumentoEoe(id: d['id'].toString(), estado: estado);
+      if (_eoeSelectedFicha != null) await _eoeSeleccionar(_eoeSelectedFicha!);
+    } catch (e) {
+      _mostrarError('Error: $e');
+    }
+  }
+
+  void _editarObservacionDocEoe(Map<String, dynamic> d) {
+    final ctrl = TextEditingController(text: (d['observaciones_eoe'] ?? '').toString());
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Editar Observaciones EOE'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Observaciones del gabinete'),
         content: TextField(
           controller: ctrl,
           maxLines: 4,
-          decoration: const InputDecoration(labelText: 'Pautas y Observaciones de Adecuación', border: OutlineInputBorder()),
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            hintText: 'Pautas de adecuación, ajustes solicitados al docente...',
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
           ElevatedButton(
-            onPressed: () {
-              setState(() {
-                ev['observaciones_eoe'] = ctrl.text.trim();
-              });
-              Navigator.pop(context);
-              _mostrarExito('Observaciones actualizadas con éxito.');
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await _supabaseService.actualizarDocumentoEoe(
+                    id: d['id'].toString(), observaciones: ctrl.text.trim());
+                if (_eoeSelectedFicha != null) await _eoeSeleccionar(_eoeSelectedFicha!);
+              } catch (e) {
+                _mostrarError('Error: $e');
+              }
             },
             child: const Text('Guardar'),
           ),
@@ -4537,141 +4462,49 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     );
   }
 
-  void _subirArchivoAdecuadoEoeDialog(String legajoId, Map<String, dynamic> ev) {
-    final ctrl = TextEditingController(text: 'Evaluación Adecuada - ${(ev['materia'] ?? "Materia").toString().replaceAll(" ", "_")}.pdf');
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Subir Archivo Adecuado (EOE)'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Adjunte la evaluación o informe con las adecuaciones curriculares finalizadas para que el docente y el alumno puedan acceder:', style: TextStyle(fontSize: 13, height: 1.3)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              decoration: const InputDecoration(labelText: 'Nombre del Archivo Adecuado', border: OutlineInputBorder(), prefixIcon: Icon(Icons.picture_as_pdf_rounded, color: Colors.red)),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () {
-              if (ctrl.text.trim().isEmpty) return;
-              setState(() {
-                ev['archivo_adecuado'] = ctrl.text.trim();
-                ev['estado'] = 'Adecuada';
-              });
-              Navigator.pop(context);
-              _mostrarExito('Archivo adecuado subido y asignado al alumno y al docente.');
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-            child: const Text('Subir Archivo Adecuado'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEoeConfidentialTab(String legajoId, List<Map<String, String>> informes, ColorScheme colorScheme) {
+  Widget _buildEoeBitacoraTab(String legajoId, ColorScheme colorScheme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Informes y Diagnósticos Médicos/Terapéuticos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-            TextButton.icon(
-              onPressed: () => _agregarInformeEoeDialog(legajoId),
-              icon: const Icon(Icons.add_rounded, size: 16),
-              label: const Text('Agregar Informe', style: TextStyle(fontSize: 12)),
-            ),
-          ],
+        ElevatedButton.icon(
+          onPressed: () => _agregarNotaBitacoraEoe(legajoId),
+          icon: const Icon(Icons.add_comment_rounded, size: 18),
+          label: const Text('Nueva nota de seguimiento'),
+          style: ElevatedButton.styleFrom(backgroundColor: colorScheme.primary, foregroundColor: Colors.white),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Expanded(
-          child: informes.isEmpty
-              ? const Center(child: Text('No hay informes registrados.', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)))
+          child: _eoeBitacora.isEmpty
+              ? const Center(
+                  child: Text('Sin notas en la bitácora todavía.',
+                      style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)))
               : ListView.builder(
-                  itemCount: informes.length,
-                  itemBuilder: (context, index) {
-                    final inf = informes[index];
+                  itemCount: _eoeBitacora.length,
+                  itemBuilder: (context, i) {
+                    final n = _eoeBitacora[i];
                     return Card(
                       elevation: 0,
                       margin: const EdgeInsets.only(bottom: 8),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.grey.withAlpha(50)),
-                      ),
-                      child: ListTile(
-                        leading: const Icon(Icons.lock_rounded, color: Colors.red),
-                        title: Text(inf['nombre']!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                        subtitle: Text('Fecha: ${inf['fecha']} | Especialista: ${inf['especialista']}', style: const TextStyle(fontSize: 11)),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-                          onPressed: () {
-                            setState(() {
-                              informes.removeWhere((x) => x['id'] == inf['id']);
-                            });
-                            _mostrarExito('Informe eliminado.');
-                          },
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildEoeBitacoraTab(String legajoId, List<Map<String, String>> bitacora, ColorScheme colorScheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Historial de Notas de Seguimiento Escolar', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-            TextButton.icon(
-              onPressed: () => _agregarNotaBitacoraDialog(legajoId),
-              icon: const Icon(Icons.rate_review_rounded, size: 16),
-              label: const Text('Nueva Nota', style: TextStyle(fontSize: 12)),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: bitacora.isEmpty
-              ? const Center(child: Text('No hay notas de bitácora registradas.', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)))
-              : ListView.builder(
-                  itemCount: bitacora.length,
-                  itemBuilder: (context, index) {
-                    final nota = bitacora[index];
-                    return Card(
-                      elevation: 0,
-                      margin: const EdgeInsets.only(bottom: 8),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.grey.withAlpha(50)),
+                        side: BorderSide(color: Colors.grey.shade200),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.all(12.0),
+                        padding: const EdgeInsets.all(12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(nota['autor']!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo)),
-                                Text(nota['fecha']!, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                                Text('${n['autor_nombre'] ?? 'Autor'} · ${n['autor_rol'] ?? ''}',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
+                                Text((n['fecha'] ?? '').toString(),
+                                    style: const TextStyle(fontSize: 10, color: Colors.grey)),
                               ],
                             ),
                             const SizedBox(height: 6),
-                            Text(nota['nota']!, style: const TextStyle(fontSize: 12, height: 1.3)),
+                            Text(n['nota'] ?? '', style: const TextStyle(fontSize: 13, height: 1.3)),
                           ],
                         ),
                       ),
@@ -4683,236 +4516,222 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     );
   }
 
-  void _abrirModalActivarAdecuacionEOE() {
+  void _agregarNotaBitacoraEoe(String legajoId) {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Nueva nota de seguimiento'),
+        content: TextField(
+          controller: ctrl,
+          maxLines: 4,
+          decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'Nota / observación'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () async {
+              if (ctrl.text.trim().isEmpty) return;
+              Navigator.pop(ctx);
+              try {
+                await _supabaseService.agregarNotaBitacoraEoe(legajoId: legajoId, nota: ctrl.text.trim());
+                if (_eoeSelectedFicha != null) await _eoeSeleccionar(_eoeSelectedFicha!);
+                _mostrarExito('Nota agregada a la bitácora.');
+              } catch (e) {
+                _mostrarError('Error: $e');
+              }
+            },
+            child: const Text('Agregar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Alta o edición de la ficha EOE de un alumno ya inscripto.
+  void _abrirModalFichaEoe({Map<String, dynamic>? ficha}) {
+    final editando = ficha != null;
     final formKey = GlobalKey<FormState>();
-    String? selectedAlumnoId;
-    String tipo = 'Metodológica';
-    final detallesCtrl = TextEditingController();
+    String? selectedAlumnoId = ficha?['legajo_id']?.toString();
+    String tipo = (ficha?['tipo_adecuacion'] ?? 'Metodológica').toString();
+    if (!const ['Metodológica', 'De Acceso', 'De Contenido'].contains(tipo)) {
+      tipo = 'Metodológica';
+    }
+    final form = Map<String, dynamic>.from(ficha?['datos_formulario'] as Map? ?? {});
+    final detallesCtrl = TextEditingController(text: (ficha?['detalles'] ?? '').toString());
+    final diagCtrl = TextEditingController(text: (form['diagnostico'] ?? '').toString());
+    final profCtrl = TextEditingController(text: (form['profesional'] ?? '').toString());
+    final vigCtrl = TextEditingController(text: (form['vigencia'] ?? '').toString());
+    final apoyosCtrl = TextEditingController(text: (form['apoyos'] ?? '').toString());
+    final obsCtrl = TextEditingController(text: (form['observaciones'] ?? '').toString());
 
     showDialog(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return AlertDialog(
-              title: const Text('Activar Adecuación Curricular', style: TextStyle(fontWeight: FontWeight.bold)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              content: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          title: Text(editando ? 'Editar ficha EOE' : 'Activar Adecuación Curricular',
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!editando)
                     DropdownButtonFormField<String>(
-                      value: selectedAlumnoId,
-                      decoration: const InputDecoration(labelText: 'Seleccione Alumno', border: OutlineInputBorder()),
-                      items: _alumnos.map((a) {
-                        return DropdownMenuItem(
-                          value: a['legajo_id'] as String,
-                          child: Text(a['nombre_completo'] as String),
-                        );
-                      }).toList(),
+                      initialValue: selectedAlumnoId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Seleccione alumno inscripto', border: OutlineInputBorder()),
+                      items: _alumnos
+                          .map((a) => DropdownMenuItem(
+                                value: a['legajo_id'] as String,
+                                child: Text(
+                                    '${a['nombre_completo']} — ${a['curso_nombre'] ?? ''}',
+                                    overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
                       onChanged: (val) => setModalState(() => selectedAlumnoId = val),
                       validator: (val) => val == null ? 'Requerido' : null,
+                    )
+                  else
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(ficha['nombre_completo'] ?? '',
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
                     ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: tipo,
-                      decoration: const InputDecoration(labelText: 'Tipo de Adecuación', border: OutlineInputBorder()),
-                      items: const [
-                        DropdownMenuItem(value: 'Metodológica', child: Text('Metodológica')),
-                        DropdownMenuItem(value: 'De Acceso', child: Text('De Acceso')),
-                        DropdownMenuItem(value: 'De Contenido', child: Text('De Contenido')),
-                      ],
-                      onChanged: (val) => setModalState(() => tipo = val ?? 'Metodológica'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: detallesCtrl,
-                      maxLines: 2,
-                      decoration: const InputDecoration(labelText: 'Detalles de la Adecuación', border: OutlineInputBorder()),
-                      validator: (val) => val == null || val.trim().isEmpty ? 'Requerido' : null,
-                    ),
-                  ],
-                ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: tipo,
+                    decoration: const InputDecoration(labelText: 'Tipo de adecuación', border: OutlineInputBorder()),
+                    items: const [
+                      DropdownMenuItem(value: 'Metodológica', child: Text('Metodológica')),
+                      DropdownMenuItem(value: 'De Acceso', child: Text('De Acceso')),
+                      DropdownMenuItem(value: 'De Contenido', child: Text('De Contenido')),
+                    ],
+                    onChanged: (val) => setModalState(() => tipo = val ?? 'Metodológica'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: detallesCtrl,
+                    maxLines: 2,
+                    decoration: const InputDecoration(labelText: 'Pautas / detalles de la adecuación', border: OutlineInputBorder()),
+                    validator: (val) => val == null || val.trim().isEmpty ? 'Requerido' : null,
+                  ),
+                  const Divider(height: 24),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Formulario del gabinete', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo)),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(controller: diagCtrl, decoration: const InputDecoration(labelText: 'Diagnóstico', border: OutlineInputBorder())),
+                  const SizedBox(height: 8),
+                  TextFormField(controller: profCtrl, decoration: const InputDecoration(labelText: 'Profesional tratante', border: OutlineInputBorder())),
+                  const SizedBox(height: 8),
+                  TextFormField(controller: vigCtrl, decoration: const InputDecoration(labelText: 'Vigencia (ej. Ciclo 2026)', border: OutlineInputBorder())),
+                  const SizedBox(height: 8),
+                  TextFormField(controller: apoyosCtrl, decoration: const InputDecoration(labelText: 'Apoyos / recursos', border: OutlineInputBorder())),
+                  const SizedBox(height: 8),
+                  TextFormField(controller: obsCtrl, maxLines: 2, decoration: const InputDecoration(labelText: 'Observaciones', border: OutlineInputBorder())),
+                ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    if (!formKey.currentState!.validate() || selectedAlumnoId == null) return;
-                    Navigator.of(context).pop();
-                    
-                    setState(() => _isLoading = true);
-                    try {
-                      await _supabaseService.actualizarAdecuacionCurricular(
-                        alumnoId: selectedAlumnoId!,
-                        activa: true,
-                        tipo: tipo,
-                        detalles: detallesCtrl.text.trim(),
-                      );
-                      setState(() {
-                        for (var a in _alumnos) {
-                          if (a['legajo_id'] == selectedAlumnoId!) {
-                            a['adecuacion_curricular'] = true;
-                            a['tipo_adecuacion'] = tipo;
-                            a['detalles_adecuacion'] = detallesCtrl.text.trim();
-                            final demo = Map<String, dynamic>.from(a['datos_demograficos'] as Map? ?? {});
-                            demo['adecuacion_curricular'] = true;
-                            demo['tipo_adecuacion'] = tipo;
-                            demo['detalles_adecuacion'] = detallesCtrl.text.trim();
-                            a['datos_demograficos'] = demo;
-                            break;
-                          }
-                        }
-                        _eoeEvaluacionesDocente.putIfAbsent(selectedAlumnoId!, () => [
-                          {
-                            'id': DateTime.now().millisecondsSinceEpoch.toString(),
-                            'materia': 'Matemática 1°',
-                            'docente': 'Docente Titular',
-                            'informe_original': 'Evaluación Escrita - Diagnóstico.pdf',
-                            'fecha_evaluacion': '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}',
-                            'observaciones_eoe': 'Pendiente de revisión por el gabinete.',
-                            'archivo_adecuado': null,
-                            'estado': 'Pendiente de Adecuación',
-                          }
-                        ]);
-                        _isLoading = false;
-                      });
-                      _mostrarExito('Adecuación curricular activada con éxito. Archivos inicializados.');
-                      _cargarDatos();
-                    } catch (e) {
-                      _mostrarError('Error al activar adecuación: $e');
-                      setState(() => _isLoading = false);
-                    }
-                  },
-                  child: const Text('Activar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _agregarInformeEoeDialog(String legajoId) {
-    final formKey = GlobalKey<FormState>();
-    final nameCtrl = TextEditingController();
-    final espCtrl = TextEditingController(text: 'Lic. Sofia Martinez (Psicopedagoga)');
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Agregar Informe Confidencial', style: TextStyle(fontWeight: FontWeight.bold)),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Nombre del Informe', border: OutlineInputBorder()),
-                  validator: (val) => val == null || val.trim().isEmpty ? 'Requerido' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: espCtrl,
-                  decoration: const InputDecoration(labelText: 'Especialista Firmante', border: OutlineInputBorder()),
-                  validator: (val) => val == null || val.trim().isEmpty ? 'Requerido' : null,
-                ),
-              ],
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancelar'),
-            ),
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancelar')),
+            if (editando)
+              TextButton(
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  await _guardarFichaEoe(selectedAlumnoId!, false, tipo, detallesCtrl.text.trim(), {});
+                },
+                child: const Text('Desactivar', style: TextStyle(color: Colors.red)),
+              ),
             ElevatedButton(
-              onPressed: () {
-                if (!formKey.currentState!.validate()) return;
-                setState(() {
-                  _eoeInformes.putIfAbsent(legajoId, () => []);
-                  _eoeInformes[legajoId]!.add({
-                    'id': DateTime.now().millisecondsSinceEpoch.toString(),
-                    'nombre': nameCtrl.text.trim(),
-                    'especialista': espCtrl.text.trim(),
-                    'fecha': '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}',
-                  });
-                });
+              onPressed: () async {
+                if (!formKey.currentState!.validate() || selectedAlumnoId == null) return;
                 Navigator.of(context).pop();
-                _mostrarExito('Informe confidencial guardado.');
+                await _guardarFichaEoe(selectedAlumnoId!, true, tipo, detallesCtrl.text.trim(), {
+                  'diagnostico': diagCtrl.text.trim(),
+                  'profesional': profCtrl.text.trim(),
+                  'vigencia': vigCtrl.text.trim(),
+                  'apoyos': apoyosCtrl.text.trim(),
+                  'observaciones': obsCtrl.text.trim(),
+                });
               },
-              child: const Text('Agregar'),
+              child: Text(editando ? 'Guardar' : 'Activar'),
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 
-  void _agregarNotaBitacoraDialog(String legajoId) {
-    final formKey = GlobalKey<FormState>();
-    final noteCtrl = TextEditingController();
-    final autorCtrl = TextEditingController(text: 'Equipo EOE');
+  Future<void> _guardarFichaEoe(
+      String legajoId, bool activa, String tipo, String detalles, Map<String, dynamic> form) async {
+    setState(() => _isLoading = true);
+    try {
+      await _supabaseService.guardarFichaEoe(
+        legajoId: legajoId,
+        activa: activa,
+        tipo: tipo,
+        detalles: detalles,
+        datosFormulario: form,
+      );
+      await _cargarEoe();
+      if (!activa) setState(() => _eoeSelectedFicha = null);
+      _mostrarExito(activa ? 'Ficha EOE guardada.' : 'Adecuación desactivada.');
+    } catch (e) {
+      _mostrarError('Error al guardar la ficha: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Nueva Nota de Seguimiento', style: TextStyle(fontWeight: FontWeight.bold)),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: noteCtrl,
-                  maxLines: 3,
-                  decoration: const InputDecoration(labelText: 'Nota / Observación', border: OutlineInputBorder()),
-                  validator: (val) => val == null || val.trim().isEmpty ? 'Requerido' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: autorCtrl,
-                  decoration: const InputDecoration(labelText: 'Autor', border: OutlineInputBorder()),
-                  validator: (val) => val == null || val.trim().isEmpty ? 'Requerido' : null,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (!formKey.currentState!.validate()) return;
-                setState(() {
-                  _eoeBitacora.putIfAbsent(legajoId, () => []);
-                  _eoeBitacora[legajoId]!.add({
-                    'id': DateTime.now().millisecondsSinceEpoch.toString(),
-                    'nota': noteCtrl.text.trim(),
-                    'autor': autorCtrl.text.trim(),
-                    'fecha': '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}',
-                  });
-                });
-                Navigator.of(context).pop();
-                _mostrarExito('Nota de bitácora agregada.');
-              },
-              child: const Text('Agregar'),
-            ),
-          ],
-        );
-      },
-    );
+  String _eoeLabelCampo(String k) {
+    switch (k) {
+      case 'diagnostico':
+        return 'Diagnóstico';
+      case 'profesional':
+        return 'Profesional tratante';
+      case 'vigencia':
+        return 'Vigencia';
+      case 'apoyos':
+        return 'Apoyos';
+      case 'observaciones':
+        return 'Observaciones';
+      default:
+        return k.isEmpty ? k : k[0].toUpperCase() + k.substring(1);
+    }
+  }
+
+  String _eoeLabelCategoria(String? c) {
+    switch (c) {
+      case 'INFORME':
+        return 'Informe';
+      case 'PAUTAS':
+        return 'Pautas';
+      case 'EVAL_ORIGINAL':
+        return 'Evaluación original (del docente)';
+      case 'EVAL_ADECUADA':
+        return 'Evaluación adecuada';
+      default:
+        return c ?? 'Documento';
+    }
+  }
+
+  IconData _eoeIconoCategoria(String? c) {
+    switch (c) {
+      case 'EVAL_ADECUADA':
+        return Icons.verified_rounded;
+      case 'EVAL_ORIGINAL':
+        return Icons.description_rounded;
+      case 'PAUTAS':
+        return Icons.rule_rounded;
+      default:
+        return Icons.folder_shared_rounded;
+    }
   }
 
   String? _rendCursoId;

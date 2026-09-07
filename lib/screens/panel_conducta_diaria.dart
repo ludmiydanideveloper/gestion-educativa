@@ -38,6 +38,7 @@ class _PanelConductaDiariaState extends State<PanelConductaDiaria> {
   final _service = SupabaseService();
   late Future<List<_ConductaAlumno>> _alumnosFuture;
   bool _guardando = false;
+  bool _yaRegistradaHoy = false;
 
   bool _verPlanillaMensual = false;
   int _selectedMesIndex = DateTime.now().month;
@@ -73,12 +74,37 @@ class _PanelConductaDiariaState extends State<PanelConductaDiaria> {
   Future<List<_ConductaAlumno>> _cargarAlumnos() async {
     try {
       final lista = await _service.fetchAlumnos(cursoId: widget.cursoId);
-      return lista
-          .map((a) => _ConductaAlumno(
-                alumnoId: a.id,
-                nombre: a.nombre,
-              ))
+      final alumnos = lista
+          .map((a) => _ConductaAlumno(alumnoId: a.id, nombre: a.nombre))
           .toList();
+
+      // Precargar lo ya registrado hoy: la planilla abre editable, no en blanco.
+      try {
+        final mensual = await _service.obtenerConductaMensualCurso(widget.cursoId);
+        final hoy = DateTime.now();
+        for (final r in mensual) {
+          final f = DateTime.tryParse((r['fecha'] ?? '').toString());
+          if (f == null || f.year != hoy.year || f.month != hoy.month || f.day != hoy.day) {
+            continue;
+          }
+          final idx = alumnos.indexWhere((al) => al.alumnoId == r['alumno_id']);
+          if (idx < 0) continue;
+          _yaRegistradaHoy = true;
+          final tipo = (r['tipo_incidencia'] ?? '').toString();
+          alumnos[idx].estado = tipo == 'Mal'
+              ? _EstadoConducta.mal
+              : (tipo == 'Regular' ? _EstadoConducta.regular : _EstadoConducta.bien);
+          final desc = (r['descripcion'] ?? '').toString();
+          const marker = ' — ';
+          if (desc.contains('Conducta diaria:') && desc.contains(marker)) {
+            alumnos[idx].observacion =
+                desc.substring(desc.indexOf(marker) + marker.length).trim();
+          }
+        }
+      } catch (_) {
+        // Sin precarga si falla: se toma como planilla nueva.
+      }
+      return alumnos;
     } catch (e) {
       debugPrint('Error cargando alumnos conducta: $e');
       return [];
@@ -596,6 +622,7 @@ class _PanelConductaDiariaState extends State<PanelConductaDiaria> {
                           alumnos: snapshot.data!,
                           fechaStr: fechaStr,
                           guardando: _guardando,
+                          yaRegistrada: _yaRegistradaHoy,
                           onGuardar: _guardarConducta,
                         ),
         );
@@ -609,12 +636,14 @@ class _ConductaBody extends StatefulWidget {
   final List<_ConductaAlumno> alumnos;
   final String fechaStr;
   final bool guardando;
+  final bool yaRegistrada;
   final Future<void> Function(List<_ConductaAlumno>) onGuardar;
 
   const _ConductaBody({
     required this.alumnos,
     required this.fechaStr,
     required this.guardando,
+    required this.yaRegistrada,
     required this.onGuardar,
   });
 
@@ -735,6 +764,25 @@ class _ConductaBodyState extends State<_ConductaBody> {
             ],
           ),
         ),
+
+        if (widget.yaRegistrada)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            color: Colors.blue.withAlpha(28),
+            child: const Row(
+              children: [
+                Icon(Icons.edit_note_rounded, size: 18, color: Colors.blue),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'La conducta de hoy ya está registrada. Estás editándola: al guardar se sobrescribe.',
+                    style: TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
 
         // ── Lista de alumnos ───────────────────────────────────────────
         Expanded(
@@ -960,7 +1008,7 @@ class _ConductaBodyState extends State<_ConductaBody> {
                       Text('${_alumnos.length} alumnos',
                           style: const TextStyle(
                               fontWeight: FontWeight.bold)),
-                      Text('Guardar el registro de hoy',
+                      Text(widget.yaRegistrada ? 'Actualizar el registro de hoy' : 'Guardar el registro de hoy',
                           style: Theme.of(context)
                               .textTheme
                               .bodySmall
@@ -980,8 +1028,8 @@ class _ConductaBodyState extends State<_ConductaBody> {
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.cloud_upload_rounded),
-                  label: const Text('Confirmar conducta',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  label: Text(widget.yaRegistrada ? 'Actualizar conducta' : 'Confirmar conducta',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: colorScheme.primary,
                     foregroundColor: colorScheme.onPrimary,

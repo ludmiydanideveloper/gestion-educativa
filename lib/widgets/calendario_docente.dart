@@ -9,17 +9,26 @@ class CalendarioDocente extends StatefulWidget {
   /// Si se pasa un cursoId y materiaId, el formulario de nuevo evento
   /// pre-selecciona ese curso (usado desde PanelGestionMateria).
   final String? cursoIdInicial;
+  final String? materiaIdInicial;
   final String? cursNombreInicial;
+
+  /// Día a mostrar seleccionado al abrir (para saltar directo a un evento).
+  final DateTime? fechaInicial;
 
   const CalendarioDocente({
     super.key,
     this.cursoIdInicial,
+    this.materiaIdInicial,
     this.cursNombreInicial,
+    this.fechaInicial,
   });
 
   @override
   State<CalendarioDocente> createState() => _CalendarioDocenteState();
 }
+
+/// Ámbito de eventos que se muestran cuando el calendario se abre desde una materia.
+enum _FiltroCal { estaMateria, esteCurso, todas }
 
 class _CalendarioDocenteState extends State<CalendarioDocente> {
   final _service = SupabaseService();
@@ -29,10 +38,20 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
 
   // Mapa: claveYYYY-MM-DD → lista de eventos de Supabase
   Map<String, List<Map<String, dynamic>>> _eventosPorDia = {};
+  // Todos los eventos únicos ya cargados, sin filtrar por ámbito.
+  List<Map<String, dynamic>> _eventosCrudos = [];
 
   // Lista de cursos del docente (para el selector al agregar evento)
   List<Map<String, dynamic>> _cursos = [];
   bool _cargando = true;
+
+  /// Sólo se ofrece el selector de ámbito cuando se entró desde una materia.
+  bool get _desdeMateria => widget.cursoIdInicial != null;
+  late _FiltroCal _filtro = !_desdeMateria
+      ? _FiltroCal.todas
+      : (widget.materiaIdInicial != null
+          ? _FiltroCal.estaMateria
+          : _FiltroCal.esteCurso);
 
   static const _meses = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -43,6 +62,10 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
   @override
   void initState() {
     super.initState();
+    if (widget.fechaInicial != null) {
+      _mesActual = DateTime(widget.fechaInicial!.year, widget.fechaInicial!.month);
+      _diaSeleccionado = widget.fechaInicial;
+    }
     _cargarTodo();
   }
 
@@ -90,15 +113,11 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
         registrar(e, 'General');
       }
 
-      final Map<String, List<Map<String, dynamic>>> nuevosEventos = {};
-      for (final e in eventosUnicos.values) {
-        final fecha = (e['fecha'] as String).substring(0, 10);
-        nuevosEventos.putIfAbsent(fecha, () => []).add(e);
-      }
+      _eventosCrudos = eventosUnicos.values.toList();
 
       if (mounted) {
         setState(() {
-          _eventosPorDia = nuevosEventos;
+          _recomputarEventos();
           _cargando = false;
         });
       }
@@ -106,6 +125,35 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
       debugPrint('Error cargando calendario: $e');
       if (mounted) setState(() => _cargando = false);
     }
+  }
+
+  /// Rearma el mapa por día desde los eventos crudos aplicando el ámbito activo.
+  /// Se llama al cargar y cada vez que se cambia el selector de ámbito.
+  void _recomputarEventos() {
+    final Map<String, List<Map<String, dynamic>>> nuevos = {};
+    for (final e in _eventosCrudos) {
+      if (!_pasaFiltro(e)) continue;
+      final fecha = (e['fecha'] as String).substring(0, 10);
+      nuevos.putIfAbsent(fecha, () => []).add(e);
+    }
+    _eventosPorDia = nuevos;
+  }
+
+  /// ¿El evento entra en el ámbito elegido (esta materia / este curso / todas)?
+  bool _pasaFiltro(Map<String, dynamic> e) {
+    if (_filtro == _FiltroCal.todas) return true;
+    final cursoEv = e['curso_id']?.toString();
+    final materiaEv = e['materia_id']?.toString();
+    final tipo = (e['tipo_evento'] ?? '').toString().toUpperCase();
+    if (_filtro == _FiltroCal.esteCurso) {
+      return cursoEv == null || cursoEv.isEmpty || cursoEv == widget.cursoIdInicial;
+    }
+    // estaMateria: eventos de la materia + los del curso sin materia (no TEMARIO)
+    if (materiaEv != null && materiaEv.isNotEmpty) {
+      return materiaEv == widget.materiaIdInicial;
+    }
+    if (tipo == 'TEMARIO') return false;
+    return cursoEv == null || cursoEv.isEmpty || cursoEv == widget.cursoIdInicial;
   }
 
   String _clave(DateTime d) =>
@@ -153,14 +201,81 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
     }
   }
 
-  void _abrirFormNuevoEvento(DateTime fecha) {
-    String tipoSeleccionado = 'EVALUACION';
-    String? cursoSeleccionadoId = widget.cursoIdInicial ??
-        (_cursos.isNotEmpty ? _cursos.first['curso_id'] as String : null);
-    final tituloCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
+  /// curso_id de los cursos que dicta quien está mirando.
+  Iterable<String> get _cursosDelDocente =>
+      _cursos.map((c) => c['curso_id'].toString());
+
+  /// ¿Este evento lo puede tocar el usuario actual?
+  bool _puedeEditar(Map<String, dynamic> evento) =>
+      _service.puedeEditarEvento(evento, cursosDelDocente: _cursosDelDocente);
+
+  Future<void> _confirmarEliminarEvento(Map<String, dynamic> evento) async {
+    final titulo = (evento['titulo'] ?? 'este evento').toString();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Eliminar evento'),
+        content: Text('¿Eliminar "$titulo" del calendario?\n\n'
+            'Las familias dejan de verlo en su cronograma.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    try {
+      await _service.eliminarEventoCalendario(
+          (evento['evento_id'] ?? evento['id']).toString());
+      await _cargarTodo();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Se eliminó "$titulo"'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  /// Alta de un evento, o edición si se pasa [evento].
+  void _abrirFormNuevoEvento(DateTime fecha, {Map<String, dynamic>? evento}) {
+    final editando = evento != null;
+
+    String limpiarInterno(String v) =>
+        v.replaceFirst('[INTERNO] ', '').replaceFirst('[INTERNO]', '').trim();
+
+    String tipoSeleccionado = editando
+        ? (evento['tipo_evento'] ?? 'EVALUACION').toString().toUpperCase()
+        : 'EVALUACION';
+    String? cursoSeleccionadoId = editando
+        ? evento['curso_id']?.toString()
+        : (widget.cursoIdInicial ??
+            (_cursos.isNotEmpty ? _cursos.first['curso_id'] as String : null));
+    final tituloCtrl = TextEditingController(
+        text: editando ? limpiarInterno((evento['titulo'] ?? '').toString()) : '');
+    final descCtrl = TextEditingController(
+        text: editando ? limpiarInterno((evento['descripcion'] ?? '').toString()) : '');
     bool guardando = false;
-    bool esInterno = false;
+    bool esInterno = editando &&
+        (evento['titulo'] ?? '').toString().startsWith('[INTERNO]');
     bool notificarPadres = false;
     bool notificarDocentes = false;
 
@@ -181,7 +296,9 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Nuevo evento — ${fecha.day}/${fecha.month}/${fecha.year}',
+                  '${editando ? 'Editar evento' : 'Nuevo evento'} — '
+                  '${fecha.day.toString().padLeft(2, '0')}/'
+                  '${fecha.month.toString().padLeft(2, '0')}/${fecha.year}',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 const SizedBox(height: 16),
@@ -247,7 +364,7 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                 const SizedBox(height: 16),
 
                 // Selector de curso
-                if (_cursos.isNotEmpty) ...[
+                if (_cursos.isNotEmpty && !editando) ...[
                   const Text('Curso',
                       style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                   const SizedBox(height: 8),
@@ -303,23 +420,39 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                             if (tituloCtrl.text.trim().isEmpty) return;
                             setS(() => guardando = true);
                             try {
-                              await _service.crearEventoCalendario(
-                                titulo: tituloCtrl.text.trim(),
-                                descripcion: descCtrl.text.trim(),
-                                fecha: _clave(fecha),
-                                tipoEvento: tipoSeleccionado,
-                                cursoId: cursoSeleccionadoId,
-                                esInterno: esInterno,
-                                notificarPadres: notificarPadres,
-                                notificarDocentes: notificarDocentes,
-                              );
+                              if (editando) {
+                                final t = tituloCtrl.text.trim();
+                                final d = descCtrl.text.trim();
+                                await _service.actualizarEventoCalendario(
+                                  eventoId: (evento['evento_id'] ?? evento['id']).toString(),
+                                  titulo: esInterno ? '[INTERNO] $t' : t,
+                                  descripcion: esInterno ? '[INTERNO] $d' : d,
+                                  fecha: _clave(fecha),
+                                  tipoEvento: tipoSeleccionado,
+                                );
+                              } else {
+                                await _service.crearEventoCalendario(
+                                  titulo: tituloCtrl.text.trim(),
+                                  descripcion: descCtrl.text.trim(),
+                                  fecha: _clave(fecha),
+                                  tipoEvento: tipoSeleccionado,
+                                  cursoId: cursoSeleccionadoId,
+                                  materiaId: _filtro == _FiltroCal.estaMateria
+                                      ? widget.materiaIdInicial
+                                      : null,
+                                  esInterno: esInterno,
+                                  notificarPadres: notificarPadres,
+                                  notificarDocentes: notificarDocentes,
+                                );
+                              }
                               if (ctx.mounted) Navigator.of(ctx).pop();
                               await _cargarTodo();
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text(
-                                        '✅ "${tituloCtrl.text.trim()}" agregado al calendario'),
+                                    content: Text(editando
+                                        ? '✅ "${tituloCtrl.text.trim()}" actualizado'
+                                        : '✅ "${tituloCtrl.text.trim()}" agregado al calendario'),
                                     backgroundColor: Colors.green,
                                     behavior: SnackBarBehavior.floating,
                                     shape: RoundedRectangleBorder(
@@ -344,8 +477,8 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                             width: 16, height: 16,
                             child: CircularProgressIndicator(
                                 strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.add_rounded),
-                    label: const Text('Guardar evento'),
+                        : Icon(editando ? Icons.save_rounded : Icons.add_rounded),
+                    label: Text(editando ? 'Guardar cambios' : 'Guardar evento'),
                   ),
                 ),
               ],
@@ -455,6 +588,45 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
             ],
           ),
         ),
+
+        // ── Selector de ámbito (sólo si se entró desde una materia) ───
+        if (_desdeMateria)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+            child: SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<_FiltroCal>(
+                showSelectedIcon: false,
+                style: SegmentedButton.styleFrom(
+                  textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                ),
+                segments: [
+                  if (widget.materiaIdInicial != null)
+                    const ButtonSegment(
+                      value: _FiltroCal.estaMateria,
+                      label: Text('Esta materia'),
+                      icon: Icon(Icons.book_rounded, size: 14),
+                    ),
+                  const ButtonSegment(
+                    value: _FiltroCal.esteCurso,
+                    label: Text('Este curso'),
+                    icon: Icon(Icons.groups_rounded, size: 14),
+                  ),
+                  const ButtonSegment(
+                    value: _FiltroCal.todas,
+                    label: Text('Todas mis materias'),
+                    icon: Icon(Icons.calendar_month_rounded, size: 14),
+                  ),
+                ],
+                selected: {_filtro},
+                onSelectionChanged: (s) => setState(() {
+                  _filtro = s.first;
+                  _recomputarEventos();
+                }),
+              ),
+            ),
+          ),
 
         // ── Días de la semana + grid ─────────────────────────────────
         // Ancho acotado: sin esto, en pantalla ancha las celdas quedaban de
@@ -652,6 +824,7 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                         final color = _colorTipo(tipo);
                         final cursoNombre =
                             (e['_curso_nombre'] ?? 'General') as String;
+                        final puedeEditar = _puedeEditar(e);
 
                         return Card(
                           elevation: 0,
@@ -671,7 +844,9 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                                   fontWeight: FontWeight.bold,
                                   fontSize: 14),
                             ),
-                            subtitle: Row(
+                            subtitle: Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
                               children: [
                                 Container(
                                   padding: const EdgeInsets.symmetric(
@@ -687,7 +862,6 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold)),
                                 ),
-                                const SizedBox(width: 6),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 6, vertical: 2),
@@ -703,8 +877,58 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold)),
                                 ),
+                                if (!puedeEditar)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.withAlpha(30),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text('De otro docente',
+                                        style: TextStyle(
+                                            color: Colors.grey,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold)),
+                                  ),
                               ],
                             ),
+                            // Sólo quien creó el evento (o dirección) lo edita
+                            // o lo borra; la base aplica la misma regla.
+                            trailing: puedeEditar
+                                ? PopupMenuButton<String>(
+                                    tooltip: 'Acciones',
+                                    icon: const Icon(Icons.more_vert_rounded, size: 20),
+                                    onSelected: (v) {
+                                      if (v == 'editar') {
+                                        _abrirFormNuevoEvento(
+                                            _diaSeleccionado!, evento: e);
+                                      } else if (v == 'eliminar') {
+                                        _confirmarEliminarEvento(e);
+                                      }
+                                    },
+                                    itemBuilder: (_) => const [
+                                      PopupMenuItem(
+                                        value: 'editar',
+                                        child: Row(children: [
+                                          Icon(Icons.edit_rounded, size: 18),
+                                          SizedBox(width: 10),
+                                          Text('Modificar'),
+                                        ]),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'eliminar',
+                                        child: Row(children: [
+                                          Icon(Icons.delete_outline_rounded,
+                                              size: 18, color: Colors.red),
+                                          SizedBox(width: 10),
+                                          Text('Eliminar',
+                                              style: TextStyle(color: Colors.red)),
+                                        ]),
+                                      ),
+                                    ],
+                                  )
+                                : null,
                           ),
                         );
                       },
