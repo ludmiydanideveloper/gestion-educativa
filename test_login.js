@@ -1,8 +1,13 @@
+require('./load_env');
 const { createClient } = require('@supabase/supabase-js');
 const { Client } = require('pg');
 
-const SUPABASE_URL = 'https://qiwwmlysqidwnywmrwko.supabase.co';
-const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpd3dtbHlzcWlkd255d21yd2tvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MTI5NTc3NiwiZXhwIjoyMDk2ODcxNzc2fQ.q2yxNRrJF-Bgcn2uZ_Eiu8fXqTqsYyZVCL7mA3509w8';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://qiwwmlysqidwnywmrwko.supabase.co';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!SERVICE_ROLE_KEY) {
+  console.error('Falta SUPABASE_SERVICE_ROLE_KEY en .env (clave "secret" del dashboard, sb_secret_...).');
+  process.exit(1);
+}
 
 const pgConfig = {
   host: 'db.qiwwmlysqidwnywmrwko.supabase.co',

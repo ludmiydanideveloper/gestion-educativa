@@ -11,25 +11,7 @@
 //   SUPABASE_DB_HOST=db.xxxx.supabase.co
 //   SUPABASE_DB_PASSWORD=...
 
-const fs = require('fs');
-const path = require('path');
-
-// Carga simple de .env sin dependencias extra
-function cargarDotEnv() {
-  const ruta = path.join(__dirname, '.env');
-  if (!fs.existsSync(ruta)) return;
-  for (const linea of fs.readFileSync(ruta, 'utf8').split('\n')) {
-    const limpia = linea.trim();
-    if (!limpia || limpia.startsWith('#')) continue;
-    const sep = limpia.indexOf('=');
-    if (sep < 0) continue;
-    const clave = limpia.slice(0, sep).trim();
-    const valor = limpia.slice(sep + 1).trim().replace(/^["']|["']$/g, '');
-    if (!(clave in process.env)) process.env[clave] = valor;
-  }
-}
-
-cargarDotEnv();
+require('./load_env');
 
 // Opción A (recomendada): pegar la connection string completa del dashboard
 // de Supabase (botón "Connect" > Session pooler) en .env como:
