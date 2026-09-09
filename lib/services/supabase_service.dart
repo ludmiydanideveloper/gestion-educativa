@@ -1947,6 +1947,148 @@ class SupabaseService {
     }
   }
 
+  /// Resumen REAL de asistencia del día para toda la escuela.
+  /// Usa las planillas del preceptor (PRECEPTOR_DIARIA), que son la toma
+  /// oficial diaria. Devuelve conteos + cobertura (cuántos cursos tomaron lista).
+  Future<Map<String, dynamic>> obtenerResumenAsistenciaHoy() async {
+    final hoy = DateTime.now().toIso8601String().substring(0, 10);
+    try {
+      final cabs = await _client
+          .from('asistencia_cabecera')
+          .select('asistencia_cabecera_id, curso_id')
+          .eq('fecha', hoy)
+          .eq('tipo_asistencia', 'PRECEPTOR_DIARIA');
+
+      final ids = List<Map<String, dynamic>>.from(cabs)
+          .map((c) => c['asistencia_cabecera_id'] as String)
+          .toList();
+      final cursos = List<Map<String, dynamic>>.from(cabs)
+          .map((c) => c['curso_id'])
+          .toSet();
+
+      int presentes = 0, ausentes = 0, tardes = 0, retiros = 0;
+      if (ids.isNotEmpty) {
+        final dets = await _client
+            .from('asistencia_detalle')
+            .select('tipo')
+            .inFilter('asistencia_cabecera_id', ids);
+        for (final d in dets) {
+          switch ((d['tipo'] ?? '').toString().toUpperCase()) {
+            case 'PRESENTE':
+              presentes++;
+              break;
+            case 'AUSENTE':
+              ausentes++;
+              break;
+            case 'TARDE':
+              tardes++;
+              break;
+            case 'RETIRO_ANTICIPADO':
+            case 'RETIRO':
+              retiros++;
+              break;
+          }
+        }
+      }
+
+      final totalCursos = await _client.from('acad_cursos').select('curso_id');
+      return {
+        'presentes': presentes,
+        'ausentes': ausentes,
+        'tardes': tardes,
+        'retiros': retiros,
+        'cursos_con_lista': cursos.length,
+        'cursos_total': (totalCursos as List).length,
+        'fecha': hoy,
+      };
+    } catch (e) {
+      print('Error al obtener resumen de asistencia de hoy: $e');
+      return {
+        'presentes': 0, 'ausentes': 0, 'tardes': 0, 'retiros': 0,
+        'cursos_con_lista': 0, 'cursos_total': 0, 'fecha': hoy,
+      };
+    }
+  }
+
+  /// Faltas acumuladas del mes por alumno, para TODA la escuela.
+  /// [mes] 1-12, [anio] opcional (por defecto el año actual).
+  /// Devuelve `[{alumno_id, nombre, curso, ausentes, tardes, retiros, faltas}]`
+  /// ordenado por faltas desc. Ausente=1, Tarde=0.25, Retiro=0.5.
+  Future<List<Map<String, dynamic>>> obtenerFaltasMensualesEscuela({
+    required int mes,
+    int? anio,
+  }) async {
+    final y = anio ?? DateTime.now().year;
+    final desde = DateTime(y, mes, 1).toIso8601String().substring(0, 10);
+    final hasta = DateTime(y, mes + 1, 1).toIso8601String().substring(0, 10);
+    try {
+      final cabs = await _client
+          .from('asistencia_cabecera')
+          .select('asistencia_cabecera_id, curso_id')
+          .eq('tipo_asistencia', 'PRECEPTOR_DIARIA')
+          .gte('fecha', desde)
+          .lt('fecha', hasta);
+      final cabList = List<Map<String, dynamic>>.from(cabs);
+      if (cabList.isEmpty) return [];
+
+      final cursoDeCab = {
+        for (final c in cabList) c['asistencia_cabecera_id'] as String: c['curso_id']
+      };
+      final dets = await _client
+          .from('asistencia_detalle')
+          .select('alumno_id, tipo, asistencia_cabecera_id')
+          .inFilter('asistencia_cabecera_id', cabList.map((c) => c['asistencia_cabecera_id'] as String).toList());
+
+      final alumnos = await fetchAlumnosList();
+      final infoAlumno = {
+        for (final a in alumnos)
+          a['legajo_id'].toString(): {
+            'nombre': a['nombre_completo'],
+            'curso': a['curso_nombre'],
+          }
+      };
+
+      final acc = <String, Map<String, dynamic>>{};
+      for (final d in dets) {
+        final aid = d['alumno_id'].toString();
+        final e = acc.putIfAbsent(aid, () => {
+              'alumno_id': aid,
+              'nombre': infoAlumno[aid]?['nombre'] ?? 'Alumno',
+              'curso': infoAlumno[aid]?['curso'] ??
+                  cursoDeCab[d['asistencia_cabecera_id']]?.toString() ??
+                  '—',
+              'ausentes': 0,
+              'tardes': 0,
+              'retiros': 0,
+            });
+        switch ((d['tipo'] ?? '').toString().toUpperCase()) {
+          case 'AUSENTE':
+            e['ausentes'] = (e['ausentes'] as int) + 1;
+            break;
+          case 'TARDE':
+            e['tardes'] = (e['tardes'] as int) + 1;
+            break;
+          case 'RETIRO_ANTICIPADO':
+          case 'RETIRO':
+            e['retiros'] = (e['retiros'] as int) + 1;
+            break;
+        }
+      }
+
+      final list = acc.values.map((e) {
+        final f = (e['ausentes'] as int) +
+            (e['tardes'] as int) * 0.25 +
+            (e['retiros'] as int) * 0.5;
+        return {...e, 'faltas': f};
+      }).where((e) => (e['faltas'] as double) > 0).toList()
+        ..sort((a, b) => (b['faltas'] as double).compareTo(a['faltas'] as double));
+      return list;
+    } catch (e) {
+      print('Error al obtener faltas mensuales de la escuela: $e');
+      return [];
+    }
+  }
+
   /// Registra el temario dictado usando la tabla acad_calendario con un tipo especial.
   /// Requiere haber aplicado temarios_migration.sql (habilita tipo_evento='TEMARIO'
   /// y la columna materia_id). Si la columna todavía no existe, reintenta sin ella.

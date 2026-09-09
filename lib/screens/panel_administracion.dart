@@ -39,6 +39,11 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
   List<Map<String, dynamic>> _asistenciaMensualDatos = [];
   bool _loadingAsistenciaMensual = false;
 
+  // Resumen real de asistencia de hoy (toda la escuela) + faltas del mes.
+  Map<String, dynamic>? _resumenHoy;
+  List<Map<String, dynamic>> _faltasMesEscuela = [];
+  bool _loadingFaltasMes = false;
+
   // Estados del Repositorio Pedagógico
   String? _repCursoId;
   String? _repMateriaId;
@@ -219,6 +224,27 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     }
   }
 
+  Future<void> _cargarResumenHoy() async {
+    try {
+      final r = await _supabaseService.obtenerResumenAsistenciaHoy();
+      if (mounted) setState(() => _resumenHoy = r);
+    } catch (e) {
+      debugPrint('Error resumen hoy: $e');
+    }
+  }
+
+  Future<void> _cargarFaltasMesEscuela() async {
+    setState(() => _loadingFaltasMes = true);
+    try {
+      final l = await _supabaseService.obtenerFaltasMensualesEscuela(mes: _selectedMesIndex);
+      if (mounted) setState(() => _faltasMesEscuela = l);
+    } catch (e) {
+      debugPrint('Error faltas mes: $e');
+    } finally {
+      if (mounted) setState(() => _loadingFaltasMes = false);
+    }
+  }
+
   Future<void> _cargarDatos() async {
     setState(() => _isLoading = true);
     try {
@@ -245,6 +271,8 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
       });
       await _cargarEoe();
       await _cargarAsistenciaMensual();
+      _cargarResumenHoy();
+      _cargarFaltasMesEscuela();
       await _cargarObservacionesAulicas();
     } catch (e) {
       _mostrarError('Error al cargar datos: $e');
@@ -2333,18 +2361,15 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
 
 
   Widget _buildDashboardTab(ColorScheme colorScheme) {
-    int totalAlumnos = _alumnos.length;
-    int presentes = (totalAlumnos * 0.94).round();
-    int ausentes = (totalAlumnos * 0.04).round();
-    int tardes = (totalAlumnos * 0.015).round();
-    int retiros = (totalAlumnos * 0.005).round();
-
-    if (totalAlumnos == 0) {
-      presentes = 0;
-      ausentes = 0;
-      tardes = 0;
-      retiros = 0;
-    }
+    // Datos REALES de la toma de hoy (planillas del preceptor). Antes esto
+    // mostraba 94% presentes fijo, sin leer nada de la base.
+    final r = _resumenHoy;
+    final int presentes = (r?['presentes'] ?? 0) as int;
+    final int ausentes = (r?['ausentes'] ?? 0) as int;
+    final int tardes = (r?['tardes'] ?? 0) as int;
+    final int retiros = (r?['retiros'] ?? 0) as int;
+    final int cursosConLista = (r?['cursos_con_lista'] ?? 0) as int;
+    final int cursosTotal = (r?['cursos_total'] ?? 0) as int;
 
     // Alumnos filtrados por curso y buscador
     final filteredAlumnos = _alumnos.where((a) {
@@ -2360,10 +2385,41 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Resumen de Asistencia de Hoy',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary),
+          Row(
+            children: [
+              Text(
+                'Resumen de Asistencia de Hoy',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary),
+              ),
+              const SizedBox(width: 10),
+              if (_resumenHoy == null)
+                const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+              else
+                Text(
+                  '$cursosConLista/$cursosTotal cursos tomaron lista',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: cursosConLista < cursosTotal ? Colors.orange.shade800 : Colors.green.shade800,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Actualizar',
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                onPressed: () {
+                  _cargarResumenHoy();
+                  _cargarFaltasMesEscuela();
+                },
+              ),
+            ],
           ),
+          if (_resumenHoy != null && presentes + ausentes + tardes + retiros == 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('Todavía no se tomó lista hoy en ningún curso.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            ),
           const SizedBox(height: 16),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -2533,6 +2589,8 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                         setState(() {
                           _selectedMesIndex = val;
                         });
+                        _cargarFaltasMesEscuela();
+                        _cargarAsistenciaMensual();
                       }
                     },
                   ),
@@ -2540,6 +2598,11 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
               ],
             ),
             const SizedBox(height: 16),
+            _buildFaltasMesEscuela(colorScheme),
+            const SizedBox(height: 20),
+            Text('Detalle del curso: ${_cursos.firstWhere((c) => c['curso_id'] == _asistenciaCursoId, orElse: () => {'identificador_division': ''})['identificador_division']}',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 8),
             _buildPlanillaMensualGrid(colorScheme, filteredAlumnos),
           ] else if (_modoVistaAsistencia == 2) ...[
             // Vista de Faltas por Materia (Desglose Asignatura)
@@ -2784,6 +2847,82 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                   ),
           ],
         ],
+      ),
+    );
+  }
+
+  /// Registro REAL de faltas del mes, toda la escuela, ordenado por faltas.
+  Widget _buildFaltasMesEscuela(ColorScheme colorScheme) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: colorScheme.outlineVariant.withAlpha(90)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.event_busy_rounded, color: Colors.red, size: 20),
+                const SizedBox(width: 8),
+                Text('Faltas de ${_mesesNombres[_selectedMesIndex - 1]} — toda la escuela',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const Spacer(),
+                if (_loadingFaltasMes)
+                  const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text('Ausente = 1 · Tarde = 0,25 · Retiro anticipado = 0,5',
+                style: TextStyle(fontSize: 11, color: Colors.grey)),
+            const SizedBox(height: 8),
+            if (!_loadingFaltasMes && _faltasMesEscuela.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text('Sin faltas registradas en ${_mesesNombres[_selectedMesIndex - 1]}.',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+              )
+            else
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columnSpacing: 22,
+                  headingRowHeight: 40,
+                  dataRowMinHeight: 36,
+                  dataRowMaxHeight: 40,
+                  columns: const [
+                    DataColumn(label: Text('Alumno', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                    DataColumn(label: Text('Curso', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                    DataColumn(label: Text('Aus.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                    DataColumn(label: Text('Tar.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                    DataColumn(label: Text('Ret.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                    DataColumn(label: Text('Faltas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                  ],
+                  rows: _faltasMesEscuela.map((f) {
+                    final faltas = f['faltas'] as double;
+                    return DataRow(cells: [
+                      DataCell(Text('${f['nombre']}', style: const TextStyle(fontSize: 12))),
+                      DataCell(Text('${f['curso']}', style: const TextStyle(fontSize: 12))),
+                      DataCell(Text('${f['ausentes']}', style: const TextStyle(fontSize: 12))),
+                      DataCell(Text('${f['tardes']}', style: const TextStyle(fontSize: 12))),
+                      DataCell(Text('${f['retiros']}', style: const TextStyle(fontSize: 12))),
+                      DataCell(Text(
+                        faltas == faltas.roundToDouble() ? faltas.toInt().toString() : faltas.toStringAsFixed(2),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: faltas >= 3 ? Colors.red.shade800 : Colors.orange.shade800,
+                        ),
+                      )),
+                    ]);
+                  }).toList(),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
