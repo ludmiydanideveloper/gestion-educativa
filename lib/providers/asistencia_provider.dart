@@ -18,6 +18,17 @@ class AsistenciaProvider extends ChangeNotifier {
 
   int contar(EstadoAsistencia e) => _alumnos.where((a) => a.estado == e).length;
 
+  /// Limpia el estado ANTES del primer build de una pantalla nueva.
+  /// El provider es único para toda la app, así que sin esto la pantalla
+  /// arranca mostrando los alumnos y el "ya tomaste lista" de la materia
+  /// anterior hasta que termina cargarAlumnos(). No llama notifyListeners
+  /// porque se invoca desde initState (todavía no hubo build).
+  void resetParaNuevaPantalla() {
+    _alumnos = [];
+    _yaGuardadaHoy = false;
+    _isLoading = true;
+  }
+
   /// Vuelve todos los alumnos a "presente" y sale del modo edición, para tomar
   /// la lista de cero (el guardado igual sobrescribe la planilla del día).
   void reiniciarPlanilla() {

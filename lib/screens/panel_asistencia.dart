@@ -30,6 +30,9 @@ class _PanelAsistenciaState extends State<PanelAsistencia> {
   @override
   void initState() {
     super.initState();
+    // Limpia el estado heredado de la pantalla anterior (provider compartido)
+    // antes del primer build, así no se ve la planilla de otra materia.
+    context.read<AsistenciaProvider>().resetParaNuevaPantalla();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<AsistenciaProvider>().cargarAlumnos(cursoId: widget.cursoId, materiaId: widget.materiaId);
       _cargarAsistenciaMensual();
