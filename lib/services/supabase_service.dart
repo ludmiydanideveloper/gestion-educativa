@@ -2639,6 +2639,342 @@ class SupabaseService {
     await _client.from('banco_evaluaciones').update({'estado': estado}).eq('id', id);
   }
 
+  // ─── REPOSITORIO PEDAGÓGICO (ped_documentos, bucket 'pedagogico') ────────
+
+  Future<List<Map<String, dynamic>>> obtenerDocsPedagogicos({
+    String? cursoId,
+    String? materiaId,
+  }) async {
+    try {
+      var q = _client.from('ped_documentos').select('*');
+      if (cursoId != null) q = q.eq('curso_id', cursoId);
+      if (materiaId != null) q = q.eq('materia_id', materiaId);
+      final res = await q.order('created_at', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint('Error obtener docs pedagógicos: $e');
+      return [];
+    }
+  }
+
+  Future<void> subirDocPedagogico({
+    required String cursoId,
+    required String materiaId,
+    required String tipo,
+    required List<int> bytes,
+    required String fileName,
+  }) async {
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final limpio = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final path = '$cursoId/$materiaId/${tipo}_${ts}_$limpio';
+    await _client.storage.from('pedagogico').uploadBinary(
+        path, Uint8List.fromList(bytes),
+        fileOptions: const FileOptions(upsert: true));
+    await _client.from('ped_documentos').insert({
+      'curso_id': cursoId,
+      'materia_id': materiaId,
+      'tipo': tipo,
+      'nombre': fileName,
+      'storage_path': path,
+      'estado': 'PENDIENTE',
+      'subido_por_auth': _client.auth.currentUser?.id,
+      'subido_por_nombre': _nombreUsuarioActual(),
+    });
+  }
+
+  Future<void> actualizarDocPedagogico({
+    required String id,
+    String? estado,
+    String? observaciones,
+  }) async {
+    final c = <String, dynamic>{};
+    if (estado != null) c['estado'] = estado;
+    if (observaciones != null) c['observaciones'] = observaciones;
+    if (c.isEmpty) return;
+    await _client.from('ped_documentos').update(c).eq('id', id);
+  }
+
+  Future<void> eliminarDocPedagogico(String id) async {
+    await _client.from('ped_documentos').delete().eq('id', id);
+  }
+
+  // ─── PROYECTOS INSTITUCIONALES ─────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> obtenerProyectos() async {
+    try {
+      final res = await _client
+          .from('proy_institucionales')
+          .select('*')
+          .order('created_at', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint('Error obtener proyectos: $e');
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> guardarProyecto({
+    String? id,
+    required String nombre,
+    String? descripcion,
+    String? responsable,
+    required String estado,
+    String? fechaInicio,
+    String? fechaFin,
+  }) async {
+    final data = {
+      'nombre': nombre,
+      'descripcion': descripcion,
+      'responsable': responsable,
+      'estado': estado,
+      'fecha_inicio': fechaInicio,
+      'fecha_fin': fechaFin,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+    if (id == null) {
+      data['creado_por'] = _client.auth.currentUser?.id;
+      final res = await _client.from('proy_institucionales').insert(data).select().single();
+      return Map<String, dynamic>.from(res);
+    } else {
+      final res = await _client
+          .from('proy_institucionales')
+          .update(data)
+          .eq('id', id)
+          .select()
+          .single();
+      return Map<String, dynamic>.from(res);
+    }
+  }
+
+  Future<void> eliminarProyecto(String id) async {
+    await _client.from('proy_institucionales').delete().eq('id', id);
+  }
+
+  Future<List<Map<String, dynamic>>> obtenerDocsProyecto(String proyectoId) async {
+    try {
+      final res = await _client
+          .from('proy_documentos')
+          .select('*')
+          .eq('proyecto_id', proyectoId)
+          .order('created_at', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> subirDocProyecto({
+    required String proyectoId,
+    required List<int> bytes,
+    required String fileName,
+  }) async {
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final limpio = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final path = '$proyectoId/${ts}_$limpio';
+    await _client.storage.from('proyectos').uploadBinary(
+        path, Uint8List.fromList(bytes),
+        fileOptions: const FileOptions(upsert: true));
+    await _client.from('proy_documentos').insert({
+      'proyecto_id': proyectoId,
+      'nombre': fileName,
+      'storage_path': path,
+      'subido_por_nombre': _nombreUsuarioActual(),
+    });
+  }
+
+  // ─── HORARIOS + DISPONIBILIDAD (DDJJ) ──────────────────────────────────
+
+  static int _minutos(String hhmm) {
+    final p = hhmm.trim().split(':');
+    if (p.length < 2) return 0;
+    return (int.tryParse(p[0]) ?? 0) * 60 + (int.tryParse(p[1]) ?? 0);
+  }
+
+  static bool _seSolapan(String i1, String f1, String i2, String f2) {
+    final a1 = _minutos(i1), b1 = _minutos(f1), a2 = _minutos(i2), b2 = _minutos(f2);
+    return a1 < b2 && a2 < b1;
+  }
+
+  /// Grilla horaria REAL de un curso: cada bloque con materia y docente titular.
+  Future<List<Map<String, dynamic>>> obtenerHorarioCurso(String cursoId) async {
+    try {
+      final bloques = await _client
+          .from('acad_horarios')
+          .select('horario_id, materia_id, dia_semana, hora_inicio, hora_fin')
+          .eq('curso_id', cursoId);
+      final materias = await _client
+          .from('acad_materias')
+          .select('materia_id, nombre_asignatura, docente_titular_id')
+          .eq('curso_id', cursoId);
+      final matMap = {for (final m in materias) m['materia_id']: m};
+
+      final docIds = materias
+          .map((m) => m['docente_titular_id'])
+          .where((d) => d != null)
+          .toSet()
+          .toList();
+      Map<dynamic, String> docNombre = {};
+      if (docIds.isNotEmpty) {
+        final docs = await _client
+            .from('usr_docentes')
+            .select('docente_id, nombre, apellido')
+            .inFilter('docente_id', docIds);
+        docNombre = {
+          for (final d in docs)
+            d['docente_id']: [d['apellido'], d['nombre']]
+                .where((x) => x != null && x.toString().isNotEmpty)
+                .join(', ')
+        };
+      }
+
+      return List<Map<String, dynamic>>.from(bloques).map((b) {
+        final m = matMap[b['materia_id']];
+        return {
+          'horario_id': b['horario_id'],
+          'materia_id': b['materia_id'],
+          'materia': m?['nombre_asignatura'] ?? '—',
+          'docente_id': m?['docente_titular_id'],
+          'docente': docNombre[m?['docente_titular_id']] ?? 'Sin asignar',
+          'dia': (b['dia_semana'] ?? '').toString(),
+          'inicio': (b['hora_inicio'] ?? '').toString(),
+          'fin': (b['hora_fin'] ?? '').toString(),
+        };
+      }).toList()
+        ..sort((a, b) {
+          final d = a['dia'].toString().compareTo(b['dia'].toString());
+          return d != 0 ? d : _minutos(a['inicio']).compareTo(_minutos(b['inicio']));
+        });
+    } catch (e) {
+      debugPrint('Error obtener horario curso: $e');
+      return [];
+    }
+  }
+
+  /// Lista simple de docentes para selectores: `[{docente_id, nombre}]`.
+  Future<List<Map<String, dynamic>>> obtenerDocentesSimple() async {
+    try {
+      final res = await _client
+          .from('usr_docentes')
+          .select('docente_id, nombre, apellido, auth_id');
+      final list = List<Map<String, dynamic>>.from(res).map((d) {
+        final n = [d['apellido'], d['nombre']]
+            .where((x) => x != null && x.toString().trim().isNotEmpty)
+            .join(', ');
+        return {
+          'docente_id': d['docente_id'],
+          'nombre': n.isEmpty ? 'Docente' : n,
+        };
+      }).toList()
+        ..sort((a, b) => a['nombre'].toString().compareTo(b['nombre'].toString()));
+      return list;
+    } catch (e) {
+      debugPrint('Error obtener docentes simple: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> obtenerDisponibilidadDocente(String docenteId) async {
+    try {
+      final res = await _client
+          .from('usr_docentes')
+          .select('disponibilidad')
+          .eq('docente_id', docenteId)
+          .maybeSingle();
+      return List<Map<String, dynamic>>.from(res?['disponibilidad'] as List? ?? []);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> guardarDisponibilidadDocente(
+      String docenteId, List<Map<String, dynamic>> franjas) async {
+    await _client
+        .from('usr_docentes')
+        .update({'disponibilidad': franjas}).eq('docente_id', docenteId);
+  }
+
+  /// Reasigna el docente titular de una materia, chequeando antes:
+  ///  - choque: el nuevo docente ya dicta en otro curso el mismo día/horario
+  ///  - disponibilidad: los bloques de la materia caen fuera de lo declarado
+  /// Devuelve `{ok, choques:[...], fuera_disponibilidad:[...]}`. Con `forzar:true`
+  /// aplica igual.
+  Future<Map<String, dynamic>> reasignarDocenteMateria({
+    required String materiaId,
+    required String nuevoDocenteId,
+    bool forzar = false,
+  }) async {
+    // Bloques de la materia a reasignar
+    final mat = await _client
+        .from('acad_materias')
+        .select('curso_id')
+        .eq('materia_id', materiaId)
+        .maybeSingle();
+    final bloquesMateria = await _client
+        .from('acad_horarios')
+        .select('dia_semana, hora_inicio, hora_fin')
+        .eq('materia_id', materiaId);
+
+    // Materias que ya dicta el nuevo docente + sus bloques
+    final susMaterias = await _client
+        .from('acad_materias')
+        .select('materia_id, nombre_asignatura, curso_id')
+        .eq('docente_titular_id', nuevoDocenteId);
+    final susMatIds = susMaterias.map((m) => m['materia_id']).toList();
+    List<Map<String, dynamic>> susBloques = [];
+    if (susMatIds.isNotEmpty) {
+      final bl = await _client
+          .from('acad_horarios')
+          .select('materia_id, dia_semana, hora_inicio, hora_fin')
+          .inFilter('materia_id', susMatIds);
+      susBloques = List<Map<String, dynamic>>.from(bl);
+    }
+    final nombreMat = {for (final m in susMaterias) m['materia_id']: m['nombre_asignatura']};
+
+    final disp = await obtenerDisponibilidadDocente(nuevoDocenteId);
+
+    final choques = <String>[];
+    final fuera = <String>[];
+    for (final b in bloquesMateria) {
+      final dia = (b['dia_semana'] ?? '').toString().toUpperCase();
+      final ini = (b['hora_inicio'] ?? '').toString();
+      final fin = (b['hora_fin'] ?? '').toString();
+
+      for (final sb in susBloques) {
+        if ((sb['dia_semana'] ?? '').toString().toUpperCase() == dia &&
+            _seSolapan(ini, fin, (sb['hora_inicio'] ?? '').toString(),
+                (sb['hora_fin'] ?? '').toString())) {
+          choques.add('$dia $ini-$fin choca con ${nombreMat[sb['materia_id']] ?? 'otra materia'}');
+        }
+      }
+
+      if (disp.isNotEmpty) {
+        final ok = disp.any((d) =>
+            (d['dia'] ?? '').toString().toUpperCase() == dia &&
+            _minutos((d['desde'] ?? '00:00').toString()) <= _minutos(ini) &&
+            _minutos((d['hasta'] ?? '23:59').toString()) >= _minutos(fin));
+        if (!ok) fuera.add('$dia $ini-$fin fuera de la disponibilidad declarada');
+      }
+    }
+
+    final ok = choques.isEmpty && fuera.isEmpty;
+    if (ok || forzar) {
+      await _client
+          .from('acad_materias')
+          .update({'docente_titular_id': nuevoDocenteId}).eq('materia_id', materiaId);
+      // Mantener también la tabla relacional docente-materia-curso.
+      try {
+        if (mat?['curso_id'] != null) {
+          await _client.from('acad_docente_materia_curso').upsert({
+            'docente_id': nuevoDocenteId,
+            'materia_id': materiaId,
+            'curso_id': mat!['curso_id'],
+          }, onConflict: 'docente_id,materia_id,curso_id');
+        }
+      } catch (_) {}
+    }
+    return {'ok': ok, 'aplicado': ok || forzar, 'choques': choques, 'fuera_disponibilidad': fuera};
+  }
+
   /// Asocia un docente a una materia y curso en la tabla relacional
   Future<void> asignarDocenteAMateria({
     required String docenteId,

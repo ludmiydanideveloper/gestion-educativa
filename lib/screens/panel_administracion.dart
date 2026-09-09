@@ -48,7 +48,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
   // Estados del Repositorio Pedagógico
   String? _repCursoId;
   String? _repMateriaId;
-  List<Map<String, dynamic>> _repositorioArchivos = [];
+  int _pedRepoRefresh = 0;
 
   // Estados de EOE (Gabinete Psicopedagógico) — persistido en eoe_ficha /
   // eoe_bitacora / eoe_documentos (ver eoe_banco_migration.sql).
@@ -60,55 +60,14 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
   bool _eoeDetalleLoading = false;
   String? _eoeFiltroCurso;
 
-  // Declaraciones Juradas de Profesores y Horarios
-  final Map<String, Map<String, dynamic>> _ddjjProfesores = {};
+  // Horarios / DDJJ
   String? _horarioSelectedCursoId;
-  final List<Map<String, dynamic>> _proyectosInstitucionales = [
-    {
-      'id': '1',
-      'nombre': 'Feria de Ciencias y Tecnología 2026',
-      'coordinador': 'Danilo Gomez',
-      'rol_coordinador': 'Profesor / Coordinador de Área',
-      'email_coordinador': 'danilo.gomez@escuela.edu',
-      'telefono_coordinador': '+54 9 11 5544-3322',
-      'estado': 'Planificación',
-      'fecha_inicio': '01/08/2026',
-      'fecha_fin': '15/10/2026',
-      'organizacion': 'Exposición intercolegial con participación de 1° a 6° año en stands temáticos de robótica, ecología y física aplicada.',
-      'cronograma': 'Etapa 1 (Agosto): Presentación de proyectos.\nEtapa 2 (Septiembre): Preselección y tutorías.\nEtapa 3 (Octubre): Feria abierta a la comunidad escolar.',
-      'archivos': [
-        {'nombre': 'Reglamento_y_Bases_Feria_2026.pdf', 'fecha': '10/07/2026', 'subido_por': 'Coordinación'},
-        {'nombre': 'Grilla_de_Evaluados_y_Stands.xlsx', 'fecha': '11/07/2026', 'subido_por': 'Danilo Gomez'}
-      ]
-    },
-    {
-      'id': '2',
-      'nombre': 'Proyecto Institucional de Solidaridad y Comedor',
-      'coordinador': 'Maria Funes',
-      'rol_coordinador': 'Directiva / Orientación Social',
-      'email_coordinador': 'mfunes@escuela.edu',
-      'telefono_coordinador': '+54 9 11 4433-2211',
-      'estado': 'En Curso',
-      'fecha_inicio': '01/05/2026',
-      'fecha_fin': '30/11/2026',
-      'organizacion': 'Colecta mensual de alimentos no perecederos y jornadas de voluntariado en centros comunitarios del barrio.',
-      'cronograma': 'Primer sábado de cada mes: Recepción de donaciones.\nSegundo sábado: Clasificación en SUM escolar.\nTercer sábado: Entrega comunitaria.',
-      'archivos': [
-        {'nombre': 'Autorizacion_Salida_Voluntariado.pdf', 'fecha': '02/05/2026', 'subido_por': 'Maria Funes'}
-      ]
-    },
-  ];
+  int _horarioRefresh = 0;
+  List<Map<String, dynamic>> _proyectos = [];
+  bool _loadingProy = false;
 
   /// Visitas áulicas registradas (usr_observaciones_aulicas)
   List<Map<String, dynamic>> _observacionesGestionClases = [];
-
-  final List<Map<String, dynamic>> _horariosActivosInstitucion = [
-    {'curso_id': '1', 'curso': '1° A', 'dia': 'Lunes', 'modulo': '1° Módulo (07:30 - 08:50)', 'materia': 'Matemática', 'docente': 'Prof. Gomez', 'email': 'gomez@escuela.edu'},
-    {'curso_id': '1', 'curso': '1° A', 'dia': 'Lunes', 'modulo': '2° Módulo (09:00 - 10:20)', 'materia': 'Matemática', 'docente': 'Prof. Gomez', 'email': 'gomez@escuela.edu'},
-    {'curso_id': '1', 'curso': '1° A', 'dia': 'Martes', 'modulo': '3° Módulo (10:40 - 12:00)', 'materia': 'Lengua y Literatura', 'docente': 'Prof. Martinez', 'email': 'martinez@escuela.edu'},
-    {'curso_id': '1', 'curso': '1° A', 'dia': 'Miércoles', 'modulo': '1° Módulo (07:30 - 08:50)', 'materia': 'Historia', 'docente': 'Prof. Lopez', 'email': 'lopez@escuela.edu'},
-    {'curso_id': '2', 'curso': '2° A', 'dia': 'Jueves', 'modulo': '1° Módulo (07:30 - 08:50)', 'materia': 'Física', 'docente': 'Prof. Gomez', 'email': 'gomez@escuela.edu'},
-  ];
 
   void _inicializarRepositorioYEOE() {
     if (_cursos.isEmpty) return;
@@ -119,47 +78,6 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
         _repMateriaId ??= listMats.first['materia_id'] as String;
       }
     }
-
-    if (_repositorioArchivos.isEmpty && _repCursoId != null && _repMateriaId != null) {
-      final cMatch = _cursos.firstWhere((c) => c['curso_id'] == _repCursoId, orElse: () => {});
-      final mMatch = _materias.firstWhere((m) => m['materia_id'] == _repMateriaId, orElse: () => {});
-      final cursoName = cMatch['identificador_division'] ?? 'Curso';
-      final matName = mMatch['nombre_asignatura'] ?? 'Materia';
-      
-      _repositorioArchivos = [
-        {
-          'id': '1',
-          'curso_id': _repCursoId,
-          'materia_id': _repMateriaId,
-          'tipo': 'Planificación',
-          'nombre': 'Planificación $matName - $cursoName.pdf',
-          'fecha': '08/07/2026',
-          'estado': 'Pendiente',
-          'docente': 'Daniel Gomez'
-        },
-        {
-          'id': '2',
-          'curso_id': _repCursoId,
-          'materia_id': _repMateriaId,
-          'tipo': 'Contrato Pedagógico',
-          'nombre': 'Contrato de Convivencia - $matName.pdf',
-          'fecha': '09/07/2026',
-          'estado': 'Aprobado',
-          'docente': 'Daniel Gomez'
-        },
-        {
-          'id': '3',
-          'curso_id': _repCursoId,
-          'materia_id': _repMateriaId,
-          'tipo': 'Criterios de Evaluación',
-          'nombre': 'Criterios de Aprobación - $matName.pdf',
-          'fecha': '09/07/2026',
-          'estado': 'Aprobado',
-          'docente': 'Daniel Gomez'
-        },
-      ];
-    }
-
   }
 
   /// Carga las fichas EOE reales (eoe_ficha + roster). Se llama desde _cargarDatos.
@@ -275,6 +193,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
       await _cargarAsistenciaMensual();
       _cargarResumenHoy();
       _cargarFaltasMesEscuela();
+      _cargarProyectos();
       await _cargarObservacionesAulicas();
     } catch (e) {
       _mostrarError('Error al cargar datos: $e');
@@ -3222,421 +3141,241 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     );
   }
 
+  // ─── PEDAGÓGICO: repositorio real (ped_documentos + bucket 'pedagogico') ───
+
   Widget _buildPedagogicoTab(ColorScheme colorScheme) {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildPedagogicoRepositorio(colorScheme),
-          const Divider(height: 32, thickness: 1),
-          _buildPedagogicoContratos(colorScheme),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPedagogicoRepositorio(ColorScheme colorScheme) {
+    _repCursoId ??= _cursos.isNotEmpty ? _cursos.first['curso_id'] as String : null;
     final materiasDelCurso = _materias.where((m) => m['curso_id'] == _repCursoId).toList();
-    final archivosFiltrados = _repositorioArchivos.where((a) {
-      return a['curso_id'] == _repCursoId && a['materia_id'] == _repMateriaId;
-    }).toList();
+    if (materiasDelCurso.every((m) => m['materia_id'] != _repMateriaId)) {
+      _repMateriaId = materiasDelCurso.isNotEmpty ? materiasDelCurso.first['materia_id'] as String : null;
+    }
 
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Card(
-            elevation: 0,
-            color: colorScheme.surfaceVariant.withAlpha(40),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: BorderSide(color: colorScheme.outlineVariant.withAlpha(80)),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final isMobile = constraints.maxWidth < 650;
-                  if (isMobile) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.folder_open_rounded, color: Colors.blue, size: 24),
-                            const SizedBox(width: 12),
-                            const Text('Explorador:', style: TextStyle(fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          value: _repCursoId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Curso', border: OutlineInputBorder()),
-                          items: _cursos.map((c) {
-                            return DropdownMenuItem(
-                              value: c['curso_id'] as String,
-                              child: Text(c['identificador_division'] as String),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            setState(() {
-                              _repCursoId = val;
-                              final mats = _materias.where((m) => m['curso_id'] == val).toList();
-                              _repMateriaId = mats.isNotEmpty ? mats.first['materia_id'] as String : null;
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          value: _repMateriaId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Materia', border: OutlineInputBorder()),
-                          disabledHint: const Text('Sin materias'),
-                          items: materiasDelCurso.map((m) {
-                            return DropdownMenuItem(
-                              value: m['materia_id'] as String,
-                              child: Text(m['nombre_asignatura'] as String),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            setState(() {
-                              _repMateriaId = val;
-                            });
-                          },
-                        ),
-                      ],
-                    );
-                  }
-                  return Row(
-                    children: [
-                      const Icon(Icons.folder_open_rounded, color: Colors.blue, size: 24),
-                      const SizedBox(width: 12),
-                      const Text('Explorador:', style: TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: _repCursoId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Curso', border: OutlineInputBorder()),
-                          items: _cursos.map((c) {
-                            return DropdownMenuItem(
-                              value: c['curso_id'] as String,
-                              child: Text(c['identificador_division'] as String),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            setState(() {
-                              _repCursoId = val;
-                              final mats = _materias.where((m) => m['curso_id'] == val).toList();
-                              _repMateriaId = mats.isNotEmpty ? mats.first['materia_id'] as String : null;
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: _repMateriaId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Materia', border: OutlineInputBorder()),
-                          disabledHint: const Text('Sin materias'),
-                          items: materiasDelCurso.map((m) {
-                            return DropdownMenuItem(
-                              value: m['materia_id'] as String,
-                              child: Text(m['nombre_asignatura'] as String),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            setState(() {
-                              _repMateriaId = val;
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  );
-                },
+          Text('Repositorio Pedagógico', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary)),
+          const SizedBox(height: 4),
+          const Text('Planificaciones, contratos pedagógicos y criterios de evaluación por materia. El docente sube, la dirección aprueba u observa.',
+              style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              SizedBox(
+                width: 220,
+                child: DropdownButtonFormField<String>(
+                  initialValue: _repCursoId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Curso', border: OutlineInputBorder(), isDense: true),
+                  items: _cursos.map((c) => DropdownMenuItem(
+                        value: c['curso_id'] as String,
+                        child: Text(c['identificador_division'] as String),
+                      )).toList(),
+                  onChanged: (v) => setState(() {
+                    _repCursoId = v;
+                    final mats = _materias.where((m) => m['curso_id'] == v).toList();
+                    _repMateriaId = mats.isNotEmpty ? mats.first['materia_id'] as String : null;
+                  }),
+                ),
               ),
-            ),
+              SizedBox(
+                width: 260,
+                child: DropdownButtonFormField<String>(
+                  initialValue: _repMateriaId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Materia', border: OutlineInputBorder(), isDense: true),
+                  items: materiasDelCurso.map((m) => DropdownMenuItem(
+                        value: m['materia_id'] as String,
+                        child: Text(m['nombre_asignatura'] as String, overflow: TextOverflow.ellipsis),
+                      )).toList(),
+                  onChanged: (v) => setState(() => _repMateriaId = v),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           if (_repCursoId == null || _repMateriaId == null)
-            const Expanded(child: Center(child: Text('Seleccione un curso y materia para ver los documentos.')))
-          else
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final isMobile = constraints.maxWidth < 800;
-                  if (isMobile) {
-                    return DefaultTabController(
-                      length: 3,
-                      child: Column(
-                        children: [
-                          TabBar(
-                            labelColor: colorScheme.primary,
-                            unselectedLabelColor: Colors.grey,
-                            indicatorColor: colorScheme.primary,
-                            isScrollable: true,
-                            tabs: const [
-                              Tab(icon: Icon(Icons.description_rounded), text: 'Planificación'),
-                              Tab(icon: Icon(Icons.rule_rounded), text: 'Contrato Pedagógico'),
-                              Tab(icon: Icon(Icons.checklist_rounded), text: 'Criterios de Evaluación'),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Expanded(
-                            child: TabBarView(
-                              children: [
-                                _buildRepoCategoryColumnInner('Planificación', archivosFiltrados, colorScheme),
-                                _buildRepoCategoryColumnInner('Contrato Pedagógico', archivosFiltrados, colorScheme),
-                                _buildRepoCategoryColumnInner('Criterios de Evaluación', archivosFiltrados, colorScheme),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  } else {
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildRepoCategoryColumn('Planificación', archivosFiltrados, colorScheme),
-                        const SizedBox(width: 16),
-                        _buildRepoCategoryColumn('Contrato Pedagógico', archivosFiltrados, colorScheme),
-                        const SizedBox(width: 16),
-                        _buildRepoCategoryColumn('Criterios de Evaluación', archivosFiltrados, colorScheme),
-                      ],
-                    );
-                  }
-                },
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRepoCategoryColumn(String tipo, List<Map<String, dynamic>> todosArchivos, ColorScheme colorScheme) {
-    return Expanded(child: _buildRepoCategoryColumnInner(tipo, todosArchivos, colorScheme));
-  }
-
-  Widget _buildRepoCategoryColumnInner(String tipo, List<Map<String, dynamic>> todosArchivos, ColorScheme colorScheme) {
-    final archivos = todosArchivos.where((a) => a['tipo'] == tipo).toList();
-    
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer.withAlpha(50),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            const Text('Seleccioná curso y materia.', style: TextStyle(color: Colors.grey))
+          else ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                Text(tipo, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                IconButton(
-                  icon: Icon(Icons.add_circle_outline_rounded, color: colorScheme.primary, size: 20),
-                  tooltip: 'Subir nuevo archivo',
-                  onPressed: () => _subirArchivoSimuladoDialog(tipo),
-                ),
+                _pedSubirBtn('PLANIFICACION', 'Subir planificación', Icons.description_rounded),
+                _pedSubirBtn('CONTRATO', 'Subir contrato pedagógico', Icons.handshake_rounded),
+                _pedSubirBtn('CRITERIOS', 'Subir criterios de evaluación', Icons.rule_rounded),
               ],
             ),
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: archivos.isEmpty
-                ? Center(
-                    child: Text(
-                      'No hay archivos de $tipo',
-                      style: const TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic),
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: archivos.length,
-                    itemBuilder: (context, index) {
-                      final a = archivos[index];
-                      final isPending = a['estado'] == 'Pendiente';
-                      
-                      return Card(
-                        elevation: 0,
-                        margin: const EdgeInsets.only(bottom: 8),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: Colors.grey.withAlpha(50)),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(10.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 20),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      a['nombre'] as String,
-                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text('Docente: ${a['docente']}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                              Text('Fecha: ${a['fecha']}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: isPending ? Colors.orange.shade50 : Colors.green.shade50,
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      (a['estado'] as String).toUpperCase(),
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                        color: isPending ? Colors.orange.shade900 : Colors.green.shade900,
-                                      ),
-                                    ),
-                                  ),
-                                  Row(
+            const SizedBox(height: 12),
+            FutureBuilder<List<Map<String, dynamic>>>(
+              key: ValueKey('$_repCursoId|$_repMateriaId|$_pedRepoRefresh'),
+              future: _supabaseService.obtenerDocsPedagogicos(cursoId: _repCursoId, materiaId: _repMateriaId),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator()));
+                }
+                final docs = snap.data ?? [];
+                if (docs.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Text('Sin documentos cargados para esta materia.', style: TextStyle(color: Colors.grey)),
+                  );
+                }
+                return Column(
+                  children: docs.map((d) {
+                    final estado = (d['estado'] ?? 'PENDIENTE').toString();
+                    final color = estado == 'APROBADO'
+                        ? Colors.green
+                        : estado == 'OBSERVADO'
+                            ? Colors.orange
+                            : Colors.blueGrey;
+                    return Card(
+                      elevation: 0,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: BorderSide(color: color.withAlpha(90)),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.insert_drive_file_rounded, size: 20, color: color),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      if (isPending)
-                                        IconButton(
-                                          icon: const Icon(Icons.check_rounded, color: Colors.green, size: 18),
-                                          tooltip: 'Aprobar Documento',
-                                          constraints: const BoxConstraints(),
-                                          padding: EdgeInsets.zero,
-                                          onPressed: () {
-                                            setState(() {
-                                              a['estado'] = 'Aprobado';
-                                            });
-                                            _mostrarExito('Documento aprobado con éxito.');
-                                          },
-                                        ),
-                                      const SizedBox(width: 8),
-                                      IconButton(
-                                        icon: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 18),
-                                        tooltip: 'Eliminar',
-                                        constraints: const BoxConstraints(),
-                                        padding: EdgeInsets.zero,
-                                        onPressed: () {
-                                          setState(() {
-                                            _repositorioArchivos.removeWhere((file) => file['id'] == a['id']);
-                                          });
-                                          _mostrarExito('Documento eliminado.');
-                                        },
-                                      ),
+                                      Text('${d['nombre']}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                      Text('${_pedLabelTipo(d['tipo'])} · ${estado} · ${d['subido_por_nombre'] ?? ''}',
+                                          style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                     ],
                                   ),
-                                ],
+                                ),
+                                if ((d['storage_path'] ?? '').toString().isNotEmpty)
+                                  IconButton(
+                                    icon: const Icon(Icons.download_rounded, size: 20),
+                                    onPressed: () => _pedDescargar(d),
+                                  ),
+                              ],
+                            ),
+                            if ((d['observaciones'] ?? '').toString().isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text('📝 ${d['observaciones']}', style: const TextStyle(fontSize: 12)),
                               ),
-                            ],
-                          ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              children: [
+                                TextButton.icon(
+                                  onPressed: () => _pedCambiarEstado(d, 'APROBADO'),
+                                  icon: const Icon(Icons.check_circle_rounded, size: 16, color: Colors.green),
+                                  label: const Text('Aprobar', style: TextStyle(fontSize: 12, color: Colors.green)),
+                                ),
+                                TextButton.icon(
+                                  onPressed: () => _pedObservar(d),
+                                  icon: const Icon(Icons.error_rounded, size: 16, color: Colors.orange),
+                                  label: const Text('Observar', style: TextStyle(fontSize: 12, color: Colors.orange)),
+                                ),
+                                TextButton.icon(
+                                  onPressed: () async {
+                                    await _supabaseService.eliminarDocPedagogico(d['id'].toString());
+                                    setState(() => _pedRepoRefresh++);
+                                  },
+                                  icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
+                                  label: const Text('Eliminar', style: TextStyle(fontSize: 12, color: Colors.red)),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      );
-                    },
-                  ),
-          ),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+          ],
         ],
       ),
     );
   }
 
-  void _subirArchivoSimuladoDialog(String tipo) {
-    final formKey = GlobalKey<FormState>();
-    final matchedMat = _materias.firstWhere((m) => m['materia_id'] == _repMateriaId, orElse: () => {});
-    final matName = matchedMat['nombre_asignatura'] ?? 'Materia';
-    final nameCtrl = TextEditingController(text: '$tipo - $matName.pdf');
-    final docCtrl = TextEditingController(text: 'Daniel Gomez');
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Subir $tipo', style: const TextStyle(fontWeight: FontWeight.bold)),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Nombre del Archivo', border: OutlineInputBorder()),
-                  validator: (val) => val == null || val.trim().isEmpty ? 'Requerido' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: docCtrl,
-                  decoration: const InputDecoration(labelText: 'Docente Titular', border: OutlineInputBorder()),
-                  validator: (val) => val == null || val.trim().isEmpty ? 'Requerido' : null,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (!formKey.currentState!.validate()) return;
-                setState(() {
-                  _repositorioArchivos.add({
-                    'id': DateTime.now().millisecondsSinceEpoch.toString(),
-                    'curso_id': _repCursoId,
-                    'materia_id': _repMateriaId,
-                    'tipo': tipo,
-                    'nombre': nameCtrl.text.trim(),
-                    'fecha': '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}',
-                    'estado': 'Pendiente',
-                    'docente': docCtrl.text.trim(),
-                  });
-                });
-                Navigator.of(context).pop();
-                _mostrarExito('Documento subido en estado PENDIENTE de validación.');
-              },
-              child: const Text('Subir'),
-            ),
-          ],
-        );
-      },
-    );
+  String _pedLabelTipo(dynamic t) {
+    switch ((t ?? '').toString()) {
+      case 'PLANIFICACION':
+        return 'Planificación';
+      case 'CONTRATO':
+        return 'Contrato pedagógico';
+      case 'CRITERIOS':
+        return 'Criterios de evaluación';
+      default:
+        return 'Documento';
+    }
   }
 
-  Widget _buildPedagogicoContratos(ColorScheme colorScheme) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Contratos Pedagógicos y Criterios de Evaluación', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.grey.withAlpha(51)),
-            ),
-            child: const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text(
-                'Aquí se establecen las pautas generales de convivencia académica, aprobación de materias, escalas de RITE y criterios pedagógicos institucionales que regirán el ciclo lectivo 2026. Todos los docentes deben firmar y subir su aceptación.',
-                style: TextStyle(height: 1.4),
-              ),
-            ),
+  Widget _pedSubirBtn(String tipo, String label, IconData icon) => OutlinedButton.icon(
+        onPressed: () => _pedSubir(tipo),
+        icon: Icon(icon, size: 16),
+        label: Text(label, style: const TextStyle(fontSize: 12)),
+      );
+
+  Future<void> _pedSubir(String tipo) async {
+    if (_repCursoId == null || _repMateriaId == null) return;
+    final res = await FilePicker.platform.pickFiles(
+      withData: true, type: FileType.custom, allowedExtensions: ['pdf', 'doc', 'docx']);
+    if (res == null || res.files.isEmpty || res.files.first.bytes == null) return;
+    final f = res.files.first;
+    try {
+      await _supabaseService.subirDocPedagogico(
+        cursoId: _repCursoId!, materiaId: _repMateriaId!, tipo: tipo,
+        bytes: f.bytes!, fileName: f.name);
+      setState(() => _pedRepoRefresh++);
+      _mostrarExito('Documento subido.');
+    } catch (e) {
+      _mostrarError('Error al subir: $e');
+    }
+  }
+
+  Future<void> _pedDescargar(Map<String, dynamic> d) async {
+    try {
+      final url = await _supabaseService.urlFirmadaStorage('pedagogico', d['storage_path'].toString());
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      _mostrarError('Error al descargar: $e');
+    }
+  }
+
+  Future<void> _pedCambiarEstado(Map<String, dynamic> d, String estado) async {
+    await _supabaseService.actualizarDocPedagogico(id: d['id'].toString(), estado: estado);
+    setState(() => _pedRepoRefresh++);
+  }
+
+  void _pedObservar(Map<String, dynamic> d) {
+    final ctrl = TextEditingController(text: (d['observaciones'] ?? '').toString());
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Observar documento'),
+        content: TextField(controller: ctrl, maxLines: 4, decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'Qué hay que corregir')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _supabaseService.actualizarDocPedagogico(
+                  id: d['id'].toString(), estado: 'OBSERVADO', observaciones: ctrl.text.trim());
+              setState(() => _pedRepoRefresh++);
+            },
+            child: const Text('Guardar'),
           ),
         ],
       ),
@@ -5142,282 +4881,192 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     );
   }
 
-  Widget _buildCambioHorarioTab(ColorScheme colorScheme) {
-    // Filtrar personal que sea docente o tenga email de profesor
-    final docentes = _personal.where((p) {
-      final meta = p['raw_user_meta_data'] as Map<String, dynamic>? ?? {};
-      final rol = meta['rol'] ?? '';
-      return rol == 'DOCENTE' || p['email'].toString().contains('profe') || p['email'].toString().contains('docente');
-    }).toList();
+  // ─── HORARIOS: grilla real (acad_horarios) + reasignar con chequeo DDJJ ───
 
-    final cursoActualId = _horarioSelectedCursoId ?? (_cursos.isNotEmpty ? _cursos.first['curso_id'] as String : null);
+  Widget _buildCambioHorarioTab(ColorScheme colorScheme) {
+    final cursoId = _horarioSelectedCursoId ??
+        (_cursos.isNotEmpty ? _cursos.first['curso_id'] as String : null);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Editor de Horarios y Control de Declaraciones Juradas (DDJJ)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary)),
-          const SizedBox(height: 12),
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.withAlpha(51))),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  const Text(
-                    'Utilice esta sección para realizar modificaciones al cronograma de asignaturas de la institución. Al intentar cambiar o asignar un módulo, el sistema leerá automáticamente las Declaraciones Juradas de los docentes para prevenir superposiciones e incompatibilidades horarias.',
-                    style: TextStyle(height: 1.4),
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: cursoActualId,
-                    decoration: const InputDecoration(labelText: 'Curso a modificar y verificar', border: OutlineInputBorder()),
-                    items: _cursos.map((c) {
-                      return DropdownMenuItem(
+          Text('Horarios y Declaraciones Juradas (DDJJ)',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary)),
+          const SizedBox(height: 4),
+          const Text(
+            'Grilla real del curso. Al reasignar la materia de un docente, el sistema chequea que no choque con sus otras clases y que caiga dentro de la disponibilidad que declaró en su DDJJ.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                width: 240,
+                child: DropdownButtonFormField<String>(
+                  initialValue: cursoId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Curso', border: OutlineInputBorder(), isDense: true),
+                  items: _cursos.map((c) => DropdownMenuItem(
                         value: c['curso_id'] as String,
                         child: Text(c['identificador_division'] as String),
-                      );
-                    }).toList(),
-                    onChanged: (val) {
-                      setState(() {
-                        _horarioSelectedCursoId = val;
-                      });
-                      _mostrarExito('Grilla semanal cargada con control activo de DDJJ.');
-                    },
-                  ),
-                ],
+                      )).toList(),
+                  onChanged: (v) => setState(() => _horarioSelectedCursoId = v),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          if (cursoActualId != null)
-            _buildGrillaHorariaCurso(cursoActualId, docentes, colorScheme),
-
-          const SizedBox(height: 28),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Declaraciones Juradas (DDJJ) de Cargos y Restricciones',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  final rowsHtml = docentes.map((p) {
-                    final email = p['email'] as String;
-                    final status = _ddjjProfesores[email]?['presentado'] == true ? 'Presentada' : 'Pendiente';
-                    final fecha = _ddjjProfesores[email]?['fecha'] ?? '-';
-                    final archivo = _ddjjProfesores[email]?['archivo'] ?? '-';
-                    final badgeClass = status == 'Presentada' ? 'badge-green' : 'badge-red';
-                    
-                    return '''
-                      <tr>
-                        <td>${p['nombre_completo'] ?? email}</td>
-                        <td>$email</td>
-                        <td><span class="badge $badgeClass">$status</span></td>
-                        <td>$fecha</td>
-                        <td>$archivo</td>
-                      </tr>
-                    ''';
-                  }).join('');
-
-                  final tableHtml = '''
-                    <h2>Listado de DDJJ de Profesores</h2>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Profesor</th>
-                          <th>Email</th>
-                          <th>Estado DDJJ</th>
-                          <th>Fecha Presentación</th>
-                          <th>Archivo Adjunto</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        $rowsHtml
-                      </tbody>
-                    </table>
-                  ''';
-                  
-                  PrintHelper.imprimirHTML(titulo: 'Declaraciones Juradas de Docentes', htmlContentBody: tableHtml);
-                },
-                icon: const Icon(Icons.print_rounded),
-                label: const Text('Exportar Listado'),
+              OutlinedButton.icon(
+                onPressed: () => _abrirDisponibilidadDocente(),
+                icon: const Icon(Icons.event_available_rounded, size: 16),
+                label: const Text('Disponibilidad de un docente (DDJJ)'),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.withAlpha(51))),
-            child: docentes.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.all(24.0),
-                    child: Center(child: Text('No hay profesores registrados en el sistema.')),
-                  )
-                : ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: docentes.length,
-                    separatorBuilder: (context, index) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final p = docentes[index];
-                      final email = p['email'] as String;
-                      
-                      // Lazy init DDJJ status con restricciones de muestra para el algoritmo
-                      _ddjjProfesores.putIfAbsent(email, () => {
-                        'presentado': index % 2 == 0,
-                        'fecha': index % 2 == 0 ? '2026-03-01' : null,
-                        'archivo': index % 2 == 0 ? 'DDJJ_Cargos_${email.split("@").first}.pdf' : null,
-                        'restricciones': [
-                          {'dia': 'Martes', 'modulo': '1° Módulo (07:30 - 08:50)', 'institucion': 'Escuela Técnica N° 2'},
-                          {'dia': 'Jueves', 'modulo': '3° Módulo (10:40 - 12:00)', 'institucion': 'Instituto San José'}
-                        ],
-                      });
+          const SizedBox(height: 16),
+          if (cursoId == null)
+            const Text('No hay cursos.', style: TextStyle(color: Colors.grey))
+          else
+            FutureBuilder<List<Map<String, dynamic>>>(
+              key: ValueKey('$cursoId|$_horarioRefresh'),
+              future: _supabaseService.obtenerHorarioCurso(cursoId),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
+                }
+                final bloques = snap.data ?? [];
+                if (bloques.isEmpty) {
+                  return const Text('Este curso no tiene horario cargado en acad_horarios.', style: TextStyle(color: Colors.grey));
+                }
+                final porDia = <String, List<Map<String, dynamic>>>{};
+                for (final b in bloques) {
+                  porDia.putIfAbsent(b['dia'].toString().toUpperCase(), () => []).add(b);
+                }
+                final diasOrden = ['LUNES', 'MARTES', 'MIÉRCOLES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'SABADO'];
+                final dias = porDia.keys.toList()
+                  ..sort((a, b) => diasOrden.indexOf(a).compareTo(diasOrden.indexOf(b)));
 
-                      final state = _ddjjProfesores[email]!;
-                      final bool isPresentado = state['presentado'];
-                      final rest = state['restricciones'] as List<dynamic>? ?? [];
-
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        leading: CircleAvatar(
-                          backgroundColor: isPresentado ? Colors.green.shade50 : Colors.red.shade50,
-                          child: Icon(
-                            isPresentado ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
-                            color: isPresentado ? Colors.green : Colors.red,
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () => _abrirReasignarMateria(cursoId),
+                      icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                      label: const Text('Reasignar docente de una materia'),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
+                    ),
+                    const SizedBox(height: 14),
+                    ...dias.map((dia) => Card(
+                          elevation: 0,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: colorScheme.outlineVariant.withAlpha(80)),
                           ),
-                        ),
-                        title: Text(p['nombre_completo'] ?? email, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 4),
-                            Text(
-                              isPresentado
-                                  ? 'Presentada: ${state['fecha']} | Archivo: ${state['archivo']}'
-                                  : 'Declaración Jurada PENDIENTE',
-                              style: TextStyle(fontSize: 12, color: isPresentado ? Colors.green.shade800 : Colors.red.shade800, fontWeight: FontWeight.w600),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(dia, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                                const SizedBox(height: 6),
+                                ...(porDia[dia]!..sort((a, b) => a['inicio'].toString().compareTo(b['inicio'].toString())))
+                                    .map((b) => Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 3),
+                                          child: Row(
+                                            children: [
+                                              SizedBox(
+                                                width: 90,
+                                                child: Text('${b['inicio']}–${b['fin']}',
+                                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                              ),
+                                              Expanded(
+                                                child: Text('${b['materia']}',
+                                                    style: const TextStyle(fontSize: 12)),
+                                              ),
+                                              Text('${b['docente']}',
+                                                  style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: b['docente'] == 'Sin asignar' ? Colors.red : Colors.grey.shade700)),
+                                            ],
+                                          ),
+                                        )),
+                              ],
                             ),
-                            if (isPresentado && rest.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                '⚠️ Restricciones declaradas: ${rest.map((r) => "${r['dia']} ${r['modulo']} (${r['institucion']})").join(", ")}',
-                                style: TextStyle(fontSize: 11, color: Colors.amber.shade900),
-                              ),
-                            ],
-                          ],
-                        ),
-                        trailing: ElevatedButton.icon(
-                          onPressed: () {
-                            _abrirModalAdjuntarDdjj(p);
-                          },
-                          icon: const Icon(Icons.attach_file_rounded, size: 16),
-                          label: Text(isPresentado ? 'Reemplazar DDJJ' : 'Adjuntar DDJJ', style: const TextStyle(fontSize: 11)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isPresentado ? Colors.grey.shade200 : colorScheme.primary,
-                            foregroundColor: isPresentado ? Colors.black87 : Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
+                        )),
+                  ],
+                );
+              },
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildGrillaHorariaCurso(String cursoId, List<Map<String, dynamic>> docentes, ColorScheme colorScheme) {
-    final dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
-    final modulos = [
-      '1° Módulo (07:30 - 08:50)',
-      '2° Módulo (09:00 - 10:20)',
-      '3° Módulo (10:40 - 12:00)',
-      '4° Módulo (13:10 - 14:30)',
-      '5° Módulo (14:40 - 16:00)',
-    ];
+  Future<void> _abrirReasignarMateria(String cursoId) async {
+    final materiasCurso = _materias.where((m) => m['curso_id'] == cursoId).toList();
+    final docentes = await _supabaseService.obtenerDocentesSimple();
+    if (!mounted) return;
+    String? materiaId = materiasCurso.isNotEmpty ? materiasCurso.first['materia_id'] as String : null;
+    String? docenteId;
 
-    final cursoNombre = _cursos.firstWhere((c) => c['curso_id'] == cursoId, orElse: () => {'identificador_division': 'Curso'})['identificador_division'];
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.indigo.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setD) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Text('Reasignar docente', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text('📅 Grilla Semanal interactiva - $cursoNombre', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.indigo)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(12)),
-                  child: const Text('💡 Haga clic en un módulo para modificar o asignar docente con verificación DDJJ', style: TextStyle(fontSize: 11, color: Colors.indigo, fontWeight: FontWeight.bold)),
+                DropdownButtonFormField<String>(
+                  initialValue: materiaId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Materia', border: OutlineInputBorder()),
+                  items: materiasCurso.map((m) => DropdownMenuItem(
+                        value: m['materia_id'] as String,
+                        child: Text(m['nombre_asignatura'] as String, overflow: TextOverflow.ellipsis),
+                      )).toList(),
+                  onChanged: (v) => setD(() => materiaId = v),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: docenteId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Nuevo docente', border: OutlineInputBorder()),
+                  items: docentes.map((d) => DropdownMenuItem(
+                        value: d['docente_id'] as String,
+                        child: Text(d['nombre'] as String, overflow: TextOverflow.ellipsis),
+                      )).toList(),
+                  onChanged: (v) => setD(() => docenteId = v),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowColor: WidgetStateProperty.all(Colors.indigo.shade50),
-                columnSpacing: 20,
-                columns: [
-                  const DataColumn(label: Text('Horario / Franja', style: TextStyle(fontWeight: FontWeight.bold))),
-                  ...dias.map((dia) => DataColumn(label: Text(dia, style: const TextStyle(fontWeight: FontWeight.bold)))),
-                ],
-                rows: modulos.map((modulo) {
-                  return DataRow(
-                    cells: [
-                      DataCell(Text(modulo, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
-                      ...dias.map((dia) {
-                        final asignaciones = _horariosActivosInstitucion.where((h) => h['curso_id'] == cursoId && h['dia'] == dia && h['modulo'] == modulo).toList();
-                        final asig = asignaciones.isNotEmpty ? asignaciones.first : null;
-
-                        return DataCell(
-                          InkWell(
-                            onTap: () => _abrirModalAsignarHorarioYValidarDDJJ(cursoId, cursoNombre ?? 'Curso', dia, modulo, docentes),
-                            child: Container(
-                              width: 140,
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                              margin: const EdgeInsets.symmetric(vertical: 4),
-                              decoration: BoxDecoration(
-                                color: asig != null ? Colors.indigo.withAlpha(20) : Colors.grey.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: asig != null ? Colors.indigo.shade300 : Colors.grey.shade300),
-                              ),
-                              child: asig != null
-                                  ? Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(asig['materia'] ?? 'Materia', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                        Text(asig['docente'] ?? 'Docente', style: const TextStyle(fontSize: 10, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                      ],
-                                    )
-                                  : const Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.add_circle_outline_rounded, size: 14, color: Colors.grey),
-                                        SizedBox(width: 4),
-                                        Text('Libre / Asignar', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                                      ],
-                                    ),
-                            ),
-                          ),
-                        );
-                      }),
-                    ],
-                  );
-                }).toList(),
-              ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: (materiaId == null || docenteId == null)
+                  ? null
+                  : () async {
+                      Navigator.pop(context);
+                      final r = await _supabaseService.reasignarDocenteMateria(
+                          materiaId: materiaId!, nuevoDocenteId: docenteId!);
+                      if (!mounted) return;
+                      if (r['ok'] == true) {
+                        setState(() => _horarioRefresh++);
+                        _mostrarExito('Reasignado sin conflictos.');
+                        _cargarDatos();
+                      } else {
+                        _mostrarResultadoReasignacion(r, materiaId!, docenteId!);
+                      }
+                    },
+              child: const Text('Verificar y reasignar'),
             ),
           ],
         ),
@@ -5425,203 +5074,161 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     );
   }
 
-  void _abrirModalAsignarHorarioYValidarDDJJ(String cursoId, String cursoNombre, String dia, String modulo, List<Map<String, dynamic>> docentes) {
-    final matCtrl = TextEditingController(text: 'Ciencias / Materia');
-    String? selDocenteEmail = docentes.isNotEmpty ? (docentes.first['email'] as String) : null;
-    String? selDocenteNombre = docentes.isNotEmpty ? (docentes.first['nombre_completo'] ?? selDocenteEmail) : null;
-
+  void _mostrarResultadoReasignacion(Map<String, dynamic> r, String materiaId, String docenteId) {
+    final choques = List<String>.from(r['choques'] ?? []);
+    final fuera = List<String>.from(r['fuera_disponibilidad'] ?? []);
     showDialog(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: Text('Asignar Módulo - $dia ($modulo)'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Curso seleccionado: $cursoNombre', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: matCtrl,
-                      decoration: const InputDecoration(labelText: 'Materia / Asignatura', border: OutlineInputBorder()),
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: selDocenteEmail,
-                      decoration: const InputDecoration(labelText: 'Docente a asignar', border: OutlineInputBorder()),
-                      items: docentes.map((doc) {
-                        final email = doc['email'] as String;
-                        final nom = doc['nombre_completo'] ?? email;
-                        return DropdownMenuItem(value: email, child: Text(nom));
-                      }).toList(),
-                      onChanged: (v) {
-                        setModalState(() {
-                          selDocenteEmail = v;
-                          final doc = docentes.firstWhere((d) => d['email'] == v, orElse: () => {});
-                          selDocenteNombre = doc['nombre_completo'] ?? v;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancelar'),
-                ),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.verified_user_rounded, size: 16),
-                  label: const Text('Validar DDJJ y Guardar'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
-                  onPressed: () async {
-                    if (selDocenteEmail == null) return;
-                    
-                    final valRes = await _supabaseService.validarConflictoHorarioYDDJJ(
-                      emailOIdDocente: selDocenteEmail!,
-                      diaSemana: dia,
-                      moduloInicio: modulo,
-                      moduloFin: modulo,
-                      horariosActivosInstitucion: _horariosActivosInstitucion,
-                      ddjjProfesores: _ddjjProfesores,
-                    );
-
-                    if (!context.mounted) return;
-
-                    if (valRes['hay_conflicto'] == true) {
-                      showDialog(
-                        context: context,
-                        builder: (ctxAlert) => AlertDialog(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          title: const Row(
-                            children: [
-                              Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
-                              SizedBox(width: 8),
-                              Text('¡Conflicto Horario / DDJJ!', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(valRes['mensaje'] as String, style: const TextStyle(fontSize: 14, height: 1.4, fontWeight: FontWeight.w500)),
-                              const SizedBox(height: 16),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.red.shade200)),
-                                child: const Text('El algoritmo ha detectado incompatibilidad horaria al cruzar esta franja con la Declaración Jurada o la carga interna del docente.', style: TextStyle(fontSize: 12, color: Colors.red)),
-                              ),
-                            ],
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctxAlert),
-                              child: const Text('Revisar y Cancelar'),
-                            ),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                              onPressed: () {
-                                Navigator.pop(ctxAlert);
-                                setState(() {
-                                  _horariosActivosInstitucion.removeWhere((h) => h['curso_id'] == cursoId && h['dia'] == dia && h['modulo'] == modulo);
-                                  _horariosActivosInstitucion.add({
-                                    'curso_id': cursoId,
-                                    'curso': cursoNombre,
-                                    'dia': dia,
-                                    'modulo': modulo,
-                                    'materia': matCtrl.text.trim(),
-                                    'docente': selDocenteNombre,
-                                    'email': selDocenteEmail,
-                                  });
-                                });
-                                Navigator.pop(context);
-                                _mostrarExito('Módulo asignado forzadamente pese al conflicto.');
-                              },
-                              child: const Text('Forzar Asignación'),
-                            ),
-                          ],
-                        ),
-                      );
-                    } else {
-                      setState(() {
-                        _horariosActivosInstitucion.removeWhere((h) => h['curso_id'] == cursoId && h['dia'] == dia && h['modulo'] == modulo);
-                        _horariosActivosInstitucion.add({
-                          'curso_id': cursoId,
-                          'curso': cursoNombre,
-                          'dia': dia,
-                          'modulo': modulo,
-                          'materia': matCtrl.text.trim(),
-                          'docente': selDocenteNombre,
-                          'email': selDocenteEmail,
-                        });
-                      });
-                      Navigator.pop(context);
-                      _mostrarExito('✔ Horario validado contra DDJJ y asignado con éxito.');
-                    }
-                  },
-                ),
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('La DDJJ marcó observaciones'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (choques.isNotEmpty) ...[
+                const Text('Choques de horario:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                ...choques.map((c) => Text('• $c', style: const TextStyle(fontSize: 12))),
+                const SizedBox(height: 8),
               ],
-            );
-          },
-        );
-      },
+              if (fuera.isNotEmpty) ...[
+                const Text('Fuera de la disponibilidad declarada:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                ...fuera.map((c) => Text('• $c', style: const TextStyle(fontSize: 12))),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade800),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _supabaseService.reasignarDocenteMateria(
+                  materiaId: materiaId, nuevoDocenteId: docenteId, forzar: true);
+              if (!mounted) return;
+              setState(() => _horarioRefresh++);
+              _mostrarExito('Reasignado igual (con observaciones).');
+              _cargarDatos();
+            },
+            child: const Text('Aplicar igual', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
     );
   }
 
-  void _abrirModalAdjuntarDdjj(Map<String, dynamic> profesor) {
-    final email = profesor['email'] as String;
-    final fileController = TextEditingController(text: 'DDJJ_Cargos_${email.split("@").first}_2026.pdf');
+  Future<void> _abrirDisponibilidadDocente() async {
+    final docentes = await _supabaseService.obtenerDocentesSimple();
+    if (!mounted || docentes.isEmpty) {
+      if (mounted) _mostrarError('No hay docentes cargados todavía.');
+      return;
+    }
+    String docenteId = docentes.first['docente_id'] as String;
+    List<Map<String, dynamic>> franjas = await _supabaseService.obtenerDisponibilidadDocente(docenteId);
+    if (!mounted) return;
 
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text('Adjuntar Declaración Jurada - ${profesor['nombre_completo'] ?? email}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Seleccione e ingrese el nombre del archivo PDF de la declaración jurada de cargos presentada por el docente:',
-                style: TextStyle(fontSize: 13, height: 1.4),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: fileController,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre del archivo adjunto',
-                  prefixIcon: Icon(Icons.picture_as_pdf_rounded, color: Colors.red),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setD) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Text('Disponibilidad declarada (DDJJ)', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: 430,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: docenteId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Docente', border: OutlineInputBorder()),
+                  items: docentes.map((d) => DropdownMenuItem(
+                        value: d['docente_id'] as String,
+                        child: Text(d['nombre'] as String, overflow: TextOverflow.ellipsis),
+                      )).toList(),
+                  onChanged: (v) async {
+                    if (v == null) return;
+                    final f = await _supabaseService.obtenerDisponibilidadDocente(v);
+                    setD(() {
+                      docenteId = v;
+                      franjas = f;
+                    });
+                  },
                 ),
-              ),
-            ],
+                const SizedBox(height: 10),
+                ...franjas.asMap().entries.map((e) {
+                  final i = e.key;
+                  final fr = e.value;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: (fr['dia'] ?? 'LUNES').toString(),
+                            isDense: true,
+                            decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+                            items: const ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES']
+                                .map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 12))))
+                                .toList(),
+                            onChanged: (v) => setD(() => fr['dia'] = v),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        SizedBox(
+                          width: 62,
+                          child: TextFormField(
+                            initialValue: (fr['desde'] ?? '').toString(),
+                            decoration: const InputDecoration(hintText: '07:00', isDense: true, border: OutlineInputBorder()),
+                            onChanged: (v) => fr['desde'] = v,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        SizedBox(
+                          width: 62,
+                          child: TextFormField(
+                            initialValue: (fr['hasta'] ?? '').toString(),
+                            decoration: const InputDecoration(hintText: '12:00', isDense: true, border: OutlineInputBorder()),
+                            onChanged: (v) => fr['hasta'] = v,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
+                          onPressed: () => setD(() => franjas.removeAt(i)),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                TextButton.icon(
+                  onPressed: () => setD(() => franjas.add({'dia': 'LUNES', 'desde': '07:00', 'hasta': '12:00'})),
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: const Text('Agregar franja'),
+                ),
+              ],
+            ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A4C9C)),
-              onPressed: () {
-                setState(() {
-                  _ddjjProfesores[email] = {
-                    'presentado': true,
-                    'fecha': DateTime.now().toIso8601String().substring(0, 10),
-                    'archivo': fileController.text,
-                  };
-                });
+              onPressed: () async {
                 Navigator.pop(context);
-                _mostrarExito('Declaración Jurada adjuntada correctamente.');
+                try {
+                  await _supabaseService.guardarDisponibilidadDocente(
+                      docenteId, franjas.map((f) => Map<String, dynamic>.from(f)).toList());
+                  _mostrarExito('Disponibilidad guardada.');
+                } catch (e) {
+                  _mostrarError('Error: $e');
+                }
               },
-              child: const Text('Guardar y Confirmar'),
+              child: const Text('Guardar'),
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -5671,340 +5278,32 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     );
   }
 
-  void _abrirModalArchivosProyecto(Map<String, dynamic> p) {
-    final fileCtrl = TextEditingController(text: 'Documento_Proyecto_${(p['nombre'] as String).replaceAll(" ", "_")}.pdf');
-    final archivos = (p['archivos'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? [];
+  // ─── PROYECTOS INSTITUCIONALES (proy_institucionales + proy_documentos) ───
 
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => AlertDialog(
-          title: Row(
-            children: [
-              const Icon(Icons.folder_shared_rounded, color: Colors.blue),
-              const SizedBox(width: 10),
-              Expanded(child: Text('Archivos: ${p['nombre']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
-            ],
-          ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          content: SizedBox(
-            width: 500,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Repositorio de planificaciones, actas y documentos del proyecto:', style: TextStyle(fontSize: 13, height: 1.3)),
-                const SizedBox(height: 12),
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 200),
-                  child: archivos.isEmpty
-                      ? const Center(child: Text('No hay archivos adjuntos en este proyecto.', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)))
-                      : ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: archivos.length,
-                          itemBuilder: (context, i) {
-                            final arc = archivos[i];
-                            return ListTile(
-                              dense: true,
-                              leading: const Icon(Icons.picture_as_pdf_rounded, color: Colors.red),
-                              title: Text(arc['nombre'] ?? 'Archivo', style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text('Subido el: ${arc['fecha'] ?? "-"} por ${arc['subido_por'] ?? "Admin"}'),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.download_rounded, color: Colors.blue),
-                                onPressed: () => _mostrarExito('Descargando ${arc['nombre']}...'),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-                const Divider(height: 24),
-                const Text('Subir nuevo documento al proyecto:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: fileCtrl,
-                        decoration: const InputDecoration(labelText: 'Nombre del Archivo PDF/DOCX', border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))), isDense: true),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        if (fileCtrl.text.trim().isEmpty) return;
-                        setState(() {
-                          archivos.add({
-                            'nombre': fileCtrl.text.trim(),
-                            'fecha': '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}',
-                            'subido_por': 'Directivo / Admin',
-                          });
-                          p['archivos'] = archivos;
-                        });
-                        setModalState(() {});
-                        fileCtrl.clear();
-                        _mostrarExito('Archivo agregado al proyecto con éxito.');
-                      },
-                      icon: const Icon(Icons.upload_file_rounded, size: 16),
-                      label: const Text('Subir'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
-          ],
-        ),
-      ),
-    );
+  Future<void> _cargarProyectos() async {
+    setState(() => _loadingProy = true);
+    try {
+      _proyectos = await _supabaseService.obtenerProyectos();
+    } catch (e) {
+      debugPrint('Error cargar proyectos: $e');
+    } finally {
+      if (mounted) setState(() => _loadingProy = false);
+    }
   }
 
-  void _abrirModalFechasProyecto(Map<String, dynamic> p) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.calendar_month_rounded, color: Colors.orange),
-            const SizedBox(width: 10),
-            Expanded(child: Text('Fechas y Organización: ${p['nombre']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
-          ],
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: SizedBox(
-          width: 500,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: Colors.orange.withAlpha(25), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.withAlpha(80))),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      Column(
-                        children: [
-                          const Text('Fecha de Inicio', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
-                          Text(p['fecha_inicio'] ?? '01/08/2026', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.deepOrange)),
-                        ],
-                      ),
-                      Container(height: 30, width: 1, color: Colors.orange.withAlpha(80)),
-                      Column(
-                        children: [
-                          const Text('Fecha de Finalización', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
-                          Text(p['fecha_fin'] ?? '30/11/2026', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.deepOrange)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text('📋 Organización Operativa y Pedagógica:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                const SizedBox(height: 6),
-                Text(p['organizacion'] ?? 'Sin descripción pedagógica detallada.', style: const TextStyle(fontSize: 13, height: 1.4)),
-                const SizedBox(height: 16),
-                const Text('⏱️ Cronograma de Etapas y Actividades:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                const SizedBox(height: 6),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300)),
-                  child: Text(p['cronograma'] ?? 'Etapa 1: Lanzamiento.\nEtapa 2: Desarrollo e implementación.\nEtapa 3: Cierre y evaluación.', style: const TextStyle(fontSize: 13, height: 1.4, fontFamily: 'monospace')),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
-        ],
-      ),
-    );
-  }
-
-  void _abrirModalACargoProyecto(Map<String, dynamic> p) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.person_pin_rounded, color: Colors.teal),
-            const SizedBox(width: 10),
-            Expanded(child: Text('Responsable a Cargo: ${p['nombre']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
-          ],
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: SizedBox(
-          width: 450,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircleAvatar(
-                radius: 36,
-                backgroundColor: Colors.teal.shade100,
-                child: Icon(Icons.school_rounded, color: Colors.teal.shade800, size: 40),
-              ),
-              const SizedBox(height: 12),
-              Text(p['coordinador'] ?? 'Docente a Cargo', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              Text(p['rol_coordinador'] ?? 'Coordinador Institucional', style: TextStyle(fontSize: 13, color: Colors.teal.shade800, fontWeight: FontWeight.w600)),
-              const Divider(height: 24),
-              ListTile(
-                leading: const Icon(Icons.email_rounded, color: Colors.teal),
-                title: const Text('Correo Electrónico', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                subtitle: Text(p['email_coordinador'] ?? 'contacto@escuela.edu', style: const TextStyle(fontWeight: FontWeight.bold)),
-              ),
-              ListTile(
-                leading: const Icon(Icons.phone_rounded, color: Colors.teal),
-                title: const Text('Teléfono de Contacto / WhatsApp', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                subtitle: Text(p['telefono_coordinador'] ?? '+54 9 11 0000-0000', style: const TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
-        ],
-      ),
-    );
-  }
-
-  void _abrirModalNuevoProyecto() {
-    final formKey = GlobalKey<FormState>();
-    final nomCtrl = TextEditingController();
-    final coordCtrl = TextEditingController();
-    final rolCtrl = TextEditingController(text: 'Docente Titular');
-    final emailCtrl = TextEditingController();
-    final telCtrl = TextEditingController();
-    final iniCtrl = TextEditingController(text: '01/08/2026');
-    final finCtrl = TextEditingController(text: '30/11/2026');
-    final orgCtrl = TextEditingController();
-    final cronoCtrl = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Crear Nuevo Proyecto Institucional', style: TextStyle(fontWeight: FontWeight.bold)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: SizedBox(
-          width: 550,
-          child: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: nomCtrl,
-                    decoration: const InputDecoration(labelText: 'Nombre del Proyecto', border: OutlineInputBorder()),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Requerido' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: coordCtrl,
-                          decoration: const InputDecoration(labelText: 'Docente / Coordinador a cargo', border: OutlineInputBorder()),
-                          validator: (v) => v == null || v.trim().isEmpty ? 'Requerido' : null,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: rolCtrl,
-                          decoration: const InputDecoration(labelText: 'Rol o Función', border: OutlineInputBorder()),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: emailCtrl,
-                          decoration: const InputDecoration(labelText: 'Email del Responsable', border: OutlineInputBorder()),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: telCtrl,
-                          decoration: const InputDecoration(labelText: 'Teléfono', border: OutlineInputBorder()),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: iniCtrl,
-                          decoration: const InputDecoration(labelText: 'Fecha de Inicio', border: OutlineInputBorder()),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: finCtrl,
-                          decoration: const InputDecoration(labelText: 'Fecha de Finalización', border: OutlineInputBorder()),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: orgCtrl,
-                    maxLines: 2,
-                    decoration: const InputDecoration(labelText: 'Organización Operativa y Pedagógica', border: OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: cronoCtrl,
-                    maxLines: 3,
-                    decoration: const InputDecoration(labelText: 'Cronograma de Etapas', border: OutlineInputBorder()),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () {
-              if (!formKey.currentState!.validate()) return;
-              setState(() {
-                _proyectosInstitucionales.insert(0, {
-                  'id': DateTime.now().millisecondsSinceEpoch.toString(),
-                  'nombre': nomCtrl.text.trim(),
-                  'coordinador': coordCtrl.text.trim(),
-                  'rol_coordinador': rolCtrl.text.trim(),
-                  'email_coordinador': emailCtrl.text.trim().isEmpty ? 'docente@escuela.edu' : emailCtrl.text.trim(),
-                  'telefono_coordinador': telCtrl.text.trim().isEmpty ? '+54 9 11 0000-0000' : telCtrl.text.trim(),
-                  'estado': 'Planificación',
-                  'fecha_inicio': iniCtrl.text.trim(),
-                  'fecha_fin': finCtrl.text.trim(),
-                  'organizacion': orgCtrl.text.trim().isEmpty ? 'Proyecto en etapa de planificación institucional.' : orgCtrl.text.trim(),
-                  'cronograma': cronoCtrl.text.trim().isEmpty ? 'Etapa 1: Presentación y diseño de grilla.' : cronoCtrl.text.trim(),
-                  'archivos': [],
-                });
-              });
-              Navigator.pop(context);
-              _mostrarExito('Proyecto institucional creado con éxito.');
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
-            child: const Text('Crear Proyecto'),
-          ),
-        ],
-      ),
-    );
+  String _proyLabelEstado(String e) {
+    switch (e) {
+      case 'PLANIFICADO':
+        return 'Planificado';
+      case 'EN_CURSO':
+        return 'En curso';
+      case 'FINALIZADO':
+        return 'Finalizado';
+      case 'SUSPENDIDO':
+        return 'Suspendido';
+      default:
+        return e;
+    }
   }
 
   Widget _buildProyectosTab(ColorScheme colorScheme) {
@@ -6014,7 +5313,6 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
                 child: Column(
@@ -6022,13 +5320,14 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                   children: [
                     Text('Proyectos Institucionales', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: colorScheme.primary)),
                     const SizedBox(height: 4),
-                    const Text('Gestión integral de proyectos escolares, con archivos adjuntos, fechas organizativas y responsables a cargo.', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    const Text('Proyectos escolares con responsable, estado, fechas y archivos adjuntos.', style: TextStyle(fontSize: 13, color: Colors.grey)),
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
+              IconButton(onPressed: _loadingProy ? null : _cargarProyectos, icon: const Icon(Icons.refresh_rounded)),
+              const SizedBox(width: 4),
               ElevatedButton.icon(
-                onPressed: _abrirModalNuevoProyecto,
+                onPressed: () => _abrirModalProyecto(),
                 icon: const Icon(Icons.add_rounded),
                 label: const Text('Nuevo Proyecto'),
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
@@ -6037,89 +5336,275 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
           ),
           const SizedBox(height: 20),
           Expanded(
-            child: _proyectosInstitucionales.isEmpty
-                ? const Center(child: Text('No hay proyectos registrados.'))
-                : ListView.builder(
-                    itemCount: _proyectosInstitucionales.length,
-                    itemBuilder: (context, index) {
-                      final p = _proyectosInstitucionales[index];
-                      final archCount = (p['archivos'] as List?)?.length ?? 0;
-
-                      return Card(
-                        elevation: 0,
-                        margin: const EdgeInsets.only(bottom: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.blue.withAlpha(51))),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+            child: _loadingProy
+                ? const Center(child: CircularProgressIndicator())
+                : _proyectos.isEmpty
+                    ? const Center(child: Text('No hay proyectos registrados.', style: TextStyle(color: Colors.grey)))
+                    : ListView.builder(
+                        itemCount: _proyectos.length,
+                        itemBuilder: (context, index) {
+                          final p = _proyectos[index];
+                          final estado = (p['estado'] ?? 'EN_CURSO').toString();
+                          final color = estado == 'FINALIZADO'
+                              ? Colors.green
+                              : estado == 'SUSPENDIDO'
+                                  ? Colors.red
+                                  : estado == 'PLANIFICADO'
+                                      ? Colors.blueGrey
+                                      : Colors.blue;
+                          return Card(
+                            elevation: 0,
+                            margin: const EdgeInsets.only(bottom: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: color.withAlpha(70))),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  CircleAvatar(
-                                    radius: 24,
-                                    backgroundColor: Colors.blue.shade50,
-                                    child: Icon(Icons.assignment_turned_in_rounded, color: Colors.blue.shade800, size: 28),
+                                  Row(
+                                    children: [
+                                      Expanded(child: Text(p['nombre'] ?? 'Proyecto', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                                      Chip(
+                                        label: Text(_proyLabelEstado(estado), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
+                                        backgroundColor: color.withAlpha(25),
+                                        side: BorderSide.none,
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Expanded(child: Text(p['nombre'] ?? 'Proyecto', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
-                                            Chip(
-                                              label: Text(p['estado'] ?? 'Activo', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                              backgroundColor: Colors.blue.shade50,
-                                              side: BorderSide.none,
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text('Responsable: ${p['coordinador']} | Período: ${p['fecha_inicio']} a ${p['fecha_fin']}', style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w600)),
-                                      ],
+                                  if ((p['descripcion'] ?? '').toString().isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text('${p['descripcion']}', style: const TextStyle(fontSize: 13)),
                                     ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Responsable: ${p['responsable'] ?? '—'}'
+                                    '${p['fecha_inicio'] != null ? ' · ${p['fecha_inicio'].toString().split('T').first}' : ''}'
+                                    '${p['fecha_fin'] != null ? ' a ${p['fecha_fin'].toString().split('T').first}' : ''}',
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Wrap(
+                                    spacing: 8,
+                                    children: [
+                                      TextButton.icon(
+                                        onPressed: () => _abrirArchivosProyecto(p),
+                                        icon: const Icon(Icons.folder_rounded, size: 16),
+                                        label: const Text('Archivos', style: TextStyle(fontSize: 12)),
+                                      ),
+                                      TextButton.icon(
+                                        onPressed: () => _abrirModalProyecto(proyecto: p),
+                                        icon: const Icon(Icons.edit_rounded, size: 16),
+                                        label: const Text('Editar', style: TextStyle(fontSize: 12)),
+                                      ),
+                                      TextButton.icon(
+                                        onPressed: () async {
+                                          final ok = await showDialog<bool>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              title: const Text('Eliminar proyecto'),
+                                              content: Text('¿Eliminar "${p['nombre']}"?'),
+                                              actions: [
+                                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                                                ElevatedButton(
+                                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                                  onPressed: () => Navigator.pop(ctx, true),
+                                                  child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (ok == true) {
+                                            await _supabaseService.eliminarProyecto(p['id'].toString());
+                                            _cargarProyectos();
+                                          }
+                                        },
+                                        icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
+                                        label: const Text('Eliminar', style: TextStyle(fontSize: 12, color: Colors.red)),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 14),
-                              const Divider(height: 1),
-                              const SizedBox(height: 12),
-                              Wrap(
-                                spacing: 10,
-                                runSpacing: 10,
-                                children: [
-                                  ElevatedButton.icon(
-                                    onPressed: () => _abrirModalArchivosProyecto(p),
-                                    icon: const Icon(Icons.folder_rounded, size: 18),
-                                    label: Text('Subir / Ver Archivos ($archCount)'),
-                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade800, foregroundColor: Colors.white, elevation: 0),
-                                  ),
-                                  ElevatedButton.icon(
-                                    onPressed: () => _abrirModalFechasProyecto(p),
-                                    icon: const Icon(Icons.calendar_month_rounded, size: 18),
-                                    label: const Text('Fechas y Organización'),
-                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade800, foregroundColor: Colors.white, elevation: 0),
-                                  ),
-                                  ElevatedButton.icon(
-                                    onPressed: () => _abrirModalACargoProyecto(p),
-                                    icon: const Icon(Icons.person_pin_rounded, size: 18),
-                                    label: Text('A Cargo de: ${p['coordinador']}'),
-                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade800, foregroundColor: Colors.white, elevation: 0),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                            ),
+                          );
+                        },
+                      ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _abrirModalProyecto({Map<String, dynamic>? proyecto}) {
+    final editando = proyecto != null;
+    final formKey = GlobalKey<FormState>();
+    final nomCtrl = TextEditingController(text: (proyecto?['nombre'] ?? '').toString());
+    final descCtrl = TextEditingController(text: (proyecto?['descripcion'] ?? '').toString());
+    final respCtrl = TextEditingController(text: (proyecto?['responsable'] ?? '').toString());
+    DateTime? ini = DateTime.tryParse((proyecto?['fecha_inicio'] ?? '').toString());
+    DateTime? fin = DateTime.tryParse((proyecto?['fecha_fin'] ?? '').toString());
+    String estado = (proyecto?['estado'] ?? 'EN_CURSO').toString();
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setD) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Text(editando ? 'Editar proyecto' : 'Nuevo proyecto', style: const TextStyle(fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: 420,
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nomCtrl,
+                      decoration: const InputDecoration(labelText: 'Nombre del proyecto', border: OutlineInputBorder()),
+                      validator: (v) => v == null || v.trim().isEmpty ? 'Requerido' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(controller: descCtrl, maxLines: 3, decoration: const InputDecoration(labelText: 'Descripción', border: OutlineInputBorder())),
+                    const SizedBox(height: 12),
+                    TextFormField(controller: respCtrl, decoration: const InputDecoration(labelText: 'Responsable / coordinador', border: OutlineInputBorder())),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: estado,
+                      decoration: const InputDecoration(labelText: 'Estado', border: OutlineInputBorder()),
+                      items: const [
+                        DropdownMenuItem(value: 'PLANIFICADO', child: Text('Planificado')),
+                        DropdownMenuItem(value: 'EN_CURSO', child: Text('En curso')),
+                        DropdownMenuItem(value: 'FINALIZADO', child: Text('Finalizado')),
+                        DropdownMenuItem(value: 'SUSPENDIDO', child: Text('Suspendido')),
+                      ],
+                      onChanged: (v) => setD(() => estado = v ?? estado),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              final d = await showDatePicker(context: context, initialDate: ini ?? DateTime.now(), firstDate: DateTime(2024), lastDate: DateTime(2030));
+                              if (d != null) setD(() => ini = d);
+                            },
+                            child: Text(ini == null ? 'Inicio' : '${ini!.day}/${ini!.month}/${ini!.year}'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              final d = await showDatePicker(context: context, initialDate: fin ?? DateTime.now(), firstDate: DateTime(2024), lastDate: DateTime(2030));
+                              if (d != null) setD(() => fin = d);
+                            },
+                            child: Text(fin == null ? 'Fin' : '${fin!.day}/${fin!.month}/${fin!.year}'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+                Navigator.pop(context);
+                try {
+                  await _supabaseService.guardarProyecto(
+                    id: proyecto?['id']?.toString(),
+                    nombre: nomCtrl.text.trim(),
+                    descripcion: descCtrl.text.trim(),
+                    responsable: respCtrl.text.trim(),
+                    estado: estado,
+                    fechaInicio: ini?.toIso8601String().substring(0, 10),
+                    fechaFin: fin?.toIso8601String().substring(0, 10),
+                  );
+                  _cargarProyectos();
+                  _mostrarExito(editando ? 'Proyecto actualizado.' : 'Proyecto creado.');
+                } catch (e) {
+                  _mostrarError('Error al guardar: $e');
+                }
+              },
+              child: Text(editando ? 'Guardar' : 'Crear'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _abrirArchivosProyecto(Map<String, dynamic> p) {
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Text('Archivos — ${p['nombre']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          content: SizedBox(
+            width: 420,
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _supabaseService.obtenerDocsProyecto(p['id'].toString()),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(height: 80, child: Center(child: CircularProgressIndicator()));
+                }
+                final docs = snap.data ?? [];
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        final res = await FilePicker.platform.pickFiles(withData: true);
+                        if (res == null || res.files.isEmpty || res.files.first.bytes == null) return;
+                        try {
+                          await _supabaseService.subirDocProyecto(
+                            proyectoId: p['id'].toString(),
+                            bytes: res.files.first.bytes!,
+                            fileName: res.files.first.name,
+                          );
+                          setD(() {});
+                        } catch (e) {
+                          _mostrarError('Error al subir: $e');
+                        }
+                      },
+                      icon: const Icon(Icons.upload_file_rounded, size: 18),
+                      label: const Text('Subir archivo'),
+                    ),
+                    const SizedBox(height: 10),
+                    if (docs.isEmpty)
+                      const Text('Sin archivos.', style: TextStyle(color: Colors.grey))
+                    else
+                      ...docs.map((d) => ListTile(
+                            dense: true,
+                            leading: const Icon(Icons.insert_drive_file_rounded, size: 20),
+                            title: Text('${d['nombre']}', style: const TextStyle(fontSize: 13)),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.download_rounded, size: 18),
+                              onPressed: () async {
+                                try {
+                                  final url = await _supabaseService.urlFirmadaStorage('proyectos', d['storage_path'].toString());
+                                  await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                                } catch (e) {
+                                  _mostrarError('Error: $e');
+                                }
+                              },
+                            ),
+                          )),
+                  ],
+                );
+              },
+            ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar'))],
+        ),
       ),
     );
   }
