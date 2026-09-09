@@ -576,11 +576,23 @@ class _PanelAsistenciaState extends State<PanelAsistencia> {
                         children: [
                           const Icon(Icons.edit_note_rounded, size: 18, color: Colors.blue),
                           const SizedBox(width: 8),
-                          const Expanded(
+                          Expanded(
                             child: Text(
-                              'La planilla de hoy ya está registrada. Estás editándola: al guardar se sobrescribe.',
-                              style: TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w600),
+                              'Ya tomaste lista hoy en este curso '
+                              '(${provider.contar(EstadoAsistencia.presente)} pres. · '
+                              '${provider.contar(EstadoAsistencia.ausente)} aus.). '
+                              'Está precargada: corregí y "Actualizar", o empezá de cero.',
+                              style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w600),
                             ),
+                          ),
+                          TextButton(
+                            onPressed: () => provider.reiniciarPlanilla(),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text('Empezar de cero', style: TextStyle(fontSize: 11)),
                           ),
                         ],
                       ),

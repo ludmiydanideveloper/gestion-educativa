@@ -16,6 +16,18 @@ class AsistenciaProvider extends ChangeNotifier {
   /// pasa a "modo edición" (precargada) y evita una segunda toma.
   bool get yaGuardadaHoy => _yaGuardadaHoy;
 
+  int contar(EstadoAsistencia e) => _alumnos.where((a) => a.estado == e).length;
+
+  /// Vuelve todos los alumnos a "presente" y sale del modo edición, para tomar
+  /// la lista de cero (el guardado igual sobrescribe la planilla del día).
+  void reiniciarPlanilla() {
+    _alumnos = _alumnos
+        .map((a) => AlumnoAsistencia(id: a.id, nombre: a.nombre))
+        .toList();
+    _yaGuardadaHoy = false;
+    notifyListeners();
+  }
+
   Future<void> cargarAlumnos({String? cursoId, String? materiaId}) async {
     _isLoading = true;
     _yaGuardadaHoy = false;
