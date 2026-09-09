@@ -5946,13 +5946,9 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     if (isLargeScreen) {
       return Scaffold(
         appBar: AppBar(
-          title: Row(
-            children: [
-              const BrandLogo(height: 38, showText: false),
-              const SizedBox(width: 12),
-              const Text('Panel de Administración General', style: TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ),
+          // El logo va sólo en la barra lateral (NavigationRail.leading); acá
+          // se repetía justo debajo.
+          title: const Text('Panel de Administración General', style: TextStyle(fontWeight: FontWeight.bold)),
           actions: [
             if (_isLoading)
               const Padding(
