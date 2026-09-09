@@ -551,6 +551,63 @@ class SupabaseService {
 
 
   /// Obtiene todas las calificaciones de una lista de actividades
+  /// Para el panel de administración: todos los movimientos (actividades) de una
+  /// materia con sus calificaciones y el docente que las cargó, para auditar lo
+  /// que hace cada profesor en su planilla.
+  Future<Map<String, dynamic>> obtenerMovimientosMateria(String materiaId) async {
+    try {
+      final actividades = await obtenerActividades(materiaId);
+      final ids = actividades.map((a) => a['id'] as String).toList();
+      final califs = await obtenerCalificacionesPorActividades(ids);
+
+      // Nombres de los docentes que crearon actividades.
+      final docenteIds = actividades
+          .map((a) => a['docente_id'])
+          .where((d) => d != null)
+          .toSet()
+          .toList();
+      final Map<String, String> nombreDocente = {};
+      if (docenteIds.isNotEmpty) {
+        final docs = await _client
+            .from('usr_docentes')
+            .select('docente_id, nombre, apellido')
+            .inFilter('docente_id', docenteIds);
+        for (final d in docs) {
+          final n = [d['apellido'], d['nombre']]
+              .where((x) => x != null && x.toString().isNotEmpty)
+              .join(', ');
+          nombreDocente[d['docente_id'] as String] = n.isEmpty ? 'Docente' : n;
+        }
+      }
+
+      final califPorActividad = <String, List<Map<String, dynamic>>>{};
+      for (final c in califs) {
+        califPorActividad
+            .putIfAbsent(c['actividad_id'] as String, () => [])
+            .add(c);
+      }
+
+      final movimientos = actividades.map((a) {
+        final notas = califPorActividad[a['id']] ?? [];
+        final cat = a['aca_categorias_nota'] as Map?;
+        return {
+          'id': a['id'],
+          'titulo': a['titulo'],
+          'fecha': a['fecha'],
+          'categoria': cat?['nombre'] ?? '—',
+          'docente': nombreDocente[a['docente_id']] ?? 'Docente',
+          'notas_cargadas': notas.where((n) => n['nota_numerica'] != null).length,
+          'calificaciones': notas,
+        };
+      }).toList();
+
+      return {'movimientos': movimientos};
+    } catch (e) {
+      print('Error al obtener movimientos de materia: $e');
+      return {'movimientos': []};
+    }
+  }
+
   Future<List<Map<String, dynamic>>> obtenerCalificacionesPorActividades(List<String> actividadIds) async {
     if (actividadIds.isEmpty) return [];
     

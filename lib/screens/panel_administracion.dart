@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/supabase_service.dart';
 import '../services/print_helper.dart';
 import '../widgets/brand_widgets.dart';
+import 'panel_boletines_preceptor.dart';
 
 class PanelAdministracion extends StatefulWidget {
   const PanelAdministracion({super.key});
@@ -57,6 +58,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
   List<Map<String, dynamic>> _eoeDocumentos = [];
   bool _eoeLoading = false;
   bool _eoeDetalleLoading = false;
+  String? _eoeFiltroCurso;
 
   // Declaraciones Juradas de Profesores y Horarios
   final Map<String, Map<String, dynamic>> _ddjjProfesores = {};
@@ -4223,22 +4225,48 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: _eoeLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _eoeFichas.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No hay alumnos registrados con Adecuación Curricular Activa.\nPulsá "Activar Adecuación" para agregar uno.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey, height: 1.4),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: _eoeFichas.length,
-                        itemBuilder: (context, index) {
-                          final al = _eoeFichas[index];
+          const SizedBox(height: 12),
+          SizedBox(
+            width: 320,
+            child: DropdownButtonFormField<String>(
+              initialValue: _eoeFiltroCurso,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Buscar por curso',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.filter_list_rounded),
+                isDense: true,
+              ),
+              items: [
+                const DropdownMenuItem<String>(value: null, child: Text('Todos los cursos')),
+                ..._cursos.map((c) => DropdownMenuItem(
+                      value: c['curso_id'] as String,
+                      child: Text(c['identificador_division'] as String),
+                    )),
+              ],
+              onChanged: (v) => setState(() => _eoeFiltroCurso = v),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Builder(builder: (_) {
+            final fichas = _eoeFiltroCurso == null
+                ? _eoeFichas
+                : _eoeFichas.where((f) => f['curso_id'] == _eoeFiltroCurso).toList();
+            return Expanded(
+              child: _eoeLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : fichas.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No hay alumnos con adecuación para este filtro.\nPulsá "Activar Adecuación" para agregar uno.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey, height: 1.4),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: fichas.length,
+                          itemBuilder: (context, index) {
+                            final al = fichas[index];
                           final tipo = al['tipo_adecuacion'] ?? 'General';
                           final detalles = (al['detalles'] ?? '').toString();
                           return Card(
@@ -4278,7 +4306,8 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                           );
                         },
                       ),
-          ),
+            );
+          }),
         ],
       ),
     );
@@ -4698,6 +4727,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
       tipo = 'Metodológica';
     }
     final form = Map<String, dynamic>.from(ficha?['datos_formulario'] as Map? ?? {});
+    String? filtroCursoId; // filtro por curso para acotar la lista de alumnos
     final detallesCtrl = TextEditingController(text: (ficha?['detalles'] ?? '').toString());
     final diagCtrl = TextEditingController(text: (form['diagnostico'] ?? '').toString());
     final profCtrl = TextEditingController(text: (form['profesional'] ?? '').toString());
@@ -4718,12 +4748,30 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (!editando)
+                  if (!editando) ...[
+                    DropdownButtonFormField<String>(
+                      initialValue: filtroCursoId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Filtrar por curso', border: OutlineInputBorder()),
+                      items: [
+                        const DropdownMenuItem<String>(value: null, child: Text('Todos los cursos')),
+                        ..._cursos.map((c) => DropdownMenuItem(
+                              value: c['curso_id'] as String,
+                              child: Text(c['identificador_division'] as String),
+                            )),
+                      ],
+                      onChanged: (val) => setModalState(() {
+                        filtroCursoId = val;
+                        selectedAlumnoId = null;
+                      }),
+                    ),
+                    const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       initialValue: selectedAlumnoId,
                       isExpanded: true,
                       decoration: const InputDecoration(labelText: 'Seleccione alumno inscripto', border: OutlineInputBorder()),
                       items: _alumnos
+                          .where((a) => filtroCursoId == null || a['curso_id'] == filtroCursoId)
                           .map((a) => DropdownMenuItem(
                                 value: a['legajo_id'] as String,
                                 child: Text(
@@ -4733,7 +4781,8 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                           .toList(),
                       onChanged: (val) => setModalState(() => selectedAlumnoId = val),
                       validator: (val) => val == null ? 'Requerido' : null,
-                    )
+                    ),
+                  ]
                   else
                     Align(
                       alignment: Alignment.centerLeft,
@@ -4887,7 +4936,6 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
       }
     }
 
-    final filteredAlumnos = _alumnos.where((a) => a['curso_id'] == _rendCursoId).toList();
     final materiasDelCurso = _materias.where((m) => m['curso_id'] == _rendCursoId).toList();
 
     return SingleChildScrollView(
@@ -4953,77 +5001,142 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
           ),
           const SizedBox(height: 24),
 
-          if (_rendCursoId == null || _rendMateriaId == null)
-            const Center(child: Text('Seleccione un curso y materia para analizar el rendimiento.'))
-          else ...[
-            Text(
-              'Libreta Digital RITE',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary),
-            ),
-            const SizedBox(height: 12),
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: Colors.grey.withAlpha(51)),
-              ),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  columnSpacing: 24,
-                  columns: const [
-                    DataColumn(label: Text('Alumno')),
-                    DataColumn(label: Text('TP 1')),
-                    DataColumn(label: Text('Evaluación 1')),
-                    DataColumn(label: Text('Desempeño')),
-                    DataColumn(label: Text('Promedio')),
-                    DataColumn(label: Text('Valoración RITE')),
-                  ],
-                  rows: filteredAlumnos.map((a) {
-                    final double n1 = ((a['nombre_completo'].toString().length % 3) + 7).toDouble();
-                    final double n2 = ((a['nombre_completo'].toString().length % 4) + 6).toDouble();
-                    final double n3 = ((a['nombre_completo'].toString().length % 2) + 8).toDouble();
-                    final promedio = (n1 + n2 + n3) / 3;
-
-                    String rite = 'TEA';
-                    Color riteColor = Colors.green;
-                    if (promedio < 7.0 && promedio >= 4.0) {
-                      rite = 'TEP';
-                      riteColor = Colors.orange;
-                    } else if (promedio < 4.0) {
-                      rite = 'TED';
-                      riteColor = Colors.red;
-                    }
-                    final badgeText = '$rite ${(promedio * 10).toStringAsFixed(0)}%';
-
-                    return DataRow(
-                      cells: [
-                        DataCell(Text(a['nombre_completo'] as String, style: const TextStyle(fontWeight: FontWeight.bold))),
-                        DataCell(Text(n1.toStringAsFixed(1))),
-                        DataCell(Text(n2.toStringAsFixed(1))),
-                        DataCell(Text(n3.toStringAsFixed(1))),
-                        DataCell(Text(promedio.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold))),
-                        DataCell(
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: riteColor.withAlpha(25),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: riteColor),
-                            ),
-                            child: Text(
-                              badgeText,
-                              style: TextStyle(color: riteColor, fontWeight: FontWeight.bold, fontSize: 12),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  }).toList(),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => PanelBoletinesPreceptor(cursoIdInicial: _rendCursoId),
+                )),
+                icon: const Icon(Icons.assignment_rounded, size: 18),
+                label: const Text('Ver boletines del curso'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colorScheme.primary,
+                  foregroundColor: Colors.white,
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          if (_rendCursoId == null || _rendMateriaId == null)
+            const Center(child: Text('Seleccioná un curso y una materia para ver los movimientos.'))
+          else
+            FutureBuilder<Map<String, dynamic>>(
+              key: ValueKey(_rendMateriaId),
+              future: _supabaseService.obtenerMovimientosMateria(_rendMateriaId!),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                final movs = (snap.data?['movimientos'] as List?) ?? [];
+                if (movs.isEmpty) {
+                  return Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: colorScheme.outlineVariant.withAlpha(80)),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('El docente todavía no cargó actividades ni notas en esta materia.',
+                          style: TextStyle(color: Colors.grey)),
+                    ),
+                  );
+                }
+
+                // Matriz alumno x actividad
+                final alumnosCurso = _alumnos.where((a) => a['curso_id'] == _rendCursoId).toList()
+                  ..sort((a, b) => (a['nombre_completo'] ?? '')
+                      .toString()
+                      .compareTo((b['nombre_completo'] ?? '').toString()));
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Movimientos de la materia (${movs.length})',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colorScheme.primary)),
+                    const SizedBox(height: 8),
+                    ...movs.map((m) => Card(
+                          elevation: 0,
+                          margin: const EdgeInsets.only(bottom: 6),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: BorderSide(color: Colors.grey.shade200),
+                          ),
+                          child: ListTile(
+                            dense: true,
+                            leading: const Icon(Icons.assignment_turned_in_rounded, size: 20),
+                            title: Text('${m['titulo']}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                            subtitle: Text(
+                              '${(m['fecha'] ?? '').toString().split('T').first} · ${m['categoria']} · '
+                              'Cargó: ${m['docente']} · ${m['notas_cargadas']}/${alumnosCurso.length} notas',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
+                        )),
+                    const SizedBox(height: 16),
+                    Text('Calificaciones', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colorScheme.primary)),
+                    const SizedBox(height: 8),
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.grey.withAlpha(51)),
+                      ),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: DataTable(
+                          columnSpacing: 18,
+                          headingRowHeight: 44,
+                          columns: [
+                            const DataColumn(label: Text('Alumno', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                            for (final m in movs)
+                              DataColumn(
+                                label: SizedBox(
+                                  width: 70,
+                                  child: Text('${m['titulo']}',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                                      maxLines: 2, overflow: TextOverflow.ellipsis),
+                                ),
+                              ),
+                            const DataColumn(label: Text('Prom.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          ],
+                          rows: alumnosCurso.map((al) {
+                            final legajo = al['legajo_id'].toString();
+                            final notas = <double>[];
+                            final cells = <DataCell>[
+                              DataCell(Text('${al['nombre_completo']}', style: const TextStyle(fontSize: 12))),
+                            ];
+                            for (final m in movs) {
+                              final califs = (m['calificaciones'] as List?) ?? [];
+                              final c = califs.firstWhere(
+                                (x) => x['alumno_id'].toString() == legajo,
+                                orElse: () => null,
+                              );
+                              final n = c?['nota_numerica'];
+                              if (n != null) notas.add((n as num).toDouble());
+                              cells.add(DataCell(Text(
+                                n == null ? '·' : (n as num).toStringAsFixed(1),
+                                style: TextStyle(fontSize: 12, color: n == null ? Colors.grey : null),
+                              )));
+                            }
+                            final prom = notas.isEmpty ? null : notas.reduce((a, b) => a + b) / notas.length;
+                            cells.add(DataCell(Text(
+                              prom == null ? '·' : prom.toStringAsFixed(2),
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            )));
+                            return DataRow(cells: cells);
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
-          ],
         ],
       ),
     );
