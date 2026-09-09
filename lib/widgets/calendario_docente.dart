@@ -30,6 +30,9 @@ class CalendarioDocente extends StatefulWidget {
 /// Ámbito de eventos que se muestran cuando el calendario se abre desde una materia.
 enum _FiltroCal { estaMateria, esteCurso, todas }
 
+/// Filtro por tipo de evento (para admin/preceptor y también útil al docente).
+enum _TipoFiltro { todos, evaluaciones, actividades, actos, reuniones }
+
 class _CalendarioDocenteState extends State<CalendarioDocente> {
   final _service = SupabaseService();
 
@@ -53,6 +56,13 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
           ? _FiltroCal.estaMateria
           : _FiltroCal.esteCurso);
 
+  _TipoFiltro _tipoFiltro = _TipoFiltro.todos;
+
+  String get _rol =>
+      Supabase.instance.client.auth.currentUser?.userMetadata?['rol'] as String? ??
+      'DOCENTE';
+  bool get _esAdmin => _rol == 'ADMIN' || _rol == 'PRECEPTOR';
+
   static const _meses = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
@@ -72,45 +82,68 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
   Future<void> _cargarTodo() async {
     setState(() => _cargando = true);
     try {
-      // 1. Obtener cursos del docente
-      final docenteId = await _service.obtenerDocenteIdActual();
-      final materias = await _service.fetchMateriasPorDocente(docenteId);
-
-      // Agrupar cursos únicos
-      final cursosMap = <String, Map<String, dynamic>>{};
-      for (final m in materias) {
-        final cId = m['curso_id'] as String;
-        cursosMap[cId] = {'curso_id': cId, 'nombre': m['identificador_division']};
+      // 1. Cursos para el selector de "nuevo evento".
+      //    Admin/preceptor: todos los cursos. Docente: sólo los que dicta.
+      if (_esAdmin) {
+        final cursos = await _service.fetchCursos();
+        _cursos = cursos
+            .map((c) => {'curso_id': c['curso_id'], 'nombre': c['identificador_division']})
+            .toList();
+      } else {
+        try {
+          final docenteId = await _service.obtenerDocenteIdActual();
+          final materias = await _service.fetchMateriasPorDocente(docenteId);
+          final cursosMap = <String, Map<String, dynamic>>{};
+          for (final m in materias) {
+            final cId = m['curso_id'] as String;
+            cursosMap[cId] = {'curso_id': cId, 'nombre': m['identificador_division']};
+          }
+          _cursos = cursosMap.values.toList();
+        } catch (_) {
+          _cursos = [];
+        }
       }
-      _cursos = cursosMap.values.toList();
 
-      // 2. Cargar eventos de todos los cursos.
-      // obtenerCalendarioPorCurso() devuelve los eventos del curso Y los generales
-      // (curso_id null), así que un evento general vuelve una vez por cada curso del
-      // docente. Se deduplica por id antes de armar el mapa por día.
       final Map<String, Map<String, dynamic>> eventosUnicos = {};
-
       void registrar(Map<String, dynamic> e, String nombreCurso) {
-        // La PK de acad_calendario es evento_id (se deja 'id' como respaldo).
         final id = (e['evento_id'] ?? e['id'])?.toString();
         final clave = id ?? '${e['fecha']}|${e['titulo']}|${e['curso_id']}';
         if (eventosUnicos.containsKey(clave)) return;
         eventosUnicos[clave] = {...e, '_curso_nombre': nombreCurso};
       }
 
-      for (final curso in _cursos) {
-        final cursoId = curso['curso_id'] as String;
-        final eventos = await _service.obtenerCalendarioPorCurso(cursoId, soloPublicos: false);
-        for (final e in eventos) {
-          final esGeneral = e['curso_id'] == null;
-          registrar(e, esGeneral ? 'General' : (curso['nombre']?.toString() ?? 'Curso'));
-        }
+      String nombreDeCurso(String? cursoId) {
+        if (cursoId == null || cursoId.isEmpty) return 'General';
+        final c = _cursos.firstWhere(
+          (x) => x['curso_id'] == cursoId,
+          orElse: () => const {},
+        );
+        return c['nombre']?.toString() ?? 'Curso';
       }
 
-      // También cargar eventos generales (sin curso)
-      final generales = await _service.obtenerCalendarioPorCurso(null, soloPublicos: false);
-      for (final e in generales) {
-        registrar(e, 'General');
+      if (_esAdmin) {
+        // Admin/preceptor ve TODOS los eventos de la escuela.
+        final todos = await _service.obtenerTodosLosEventosCalendario();
+        for (final e in todos) {
+          registrar(e, nombreDeCurso(e['curso_id']?.toString()));
+        }
+      } else {
+        // Docente: eventos de sus cursos + los generales (curso_id null).
+        // obtenerCalendarioPorCurso() ya incluye los generales, así que se
+        // deduplica por id.
+        for (final curso in _cursos) {
+          final cursoId = curso['curso_id'] as String;
+          final eventos =
+              await _service.obtenerCalendarioPorCurso(cursoId, soloPublicos: false);
+          for (final e in eventos) {
+            registrar(e, e['curso_id'] == null ? 'General' : nombreDeCurso(cursoId));
+          }
+        }
+        final generales =
+            await _service.obtenerCalendarioPorCurso(null, soloPublicos: false);
+        for (final e in generales) {
+          registrar(e, 'General');
+        }
       }
 
       _eventosCrudos = eventosUnicos.values.toList();
@@ -139,8 +172,44 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
     _eventosPorDia = nuevos;
   }
 
-  /// ¿El evento entra en el ámbito elegido (esta materia / este curso / todas)?
+  String _labelFiltroTipo(_TipoFiltro f) {
+    switch (f) {
+      case _TipoFiltro.todos:
+        return 'Todos';
+      case _TipoFiltro.evaluaciones:
+        return 'Evaluaciones';
+      case _TipoFiltro.actividades:
+        return 'Actividades';
+      case _TipoFiltro.actos:
+        return 'Actos';
+      case _TipoFiltro.reuniones:
+        return 'Reuniones';
+    }
+  }
+
+  /// ¿El evento pasa el filtro por tipo (Todos / Evaluaciones / …)?
+  bool _pasaTipo(Map<String, dynamic> e) {
+    final tipo = (e['tipo_evento'] ?? '').toString().toUpperCase();
+    final esActo = (e['titulo'] ?? '').toString().toLowerCase().contains('acto');
+    switch (_tipoFiltro) {
+      case _TipoFiltro.todos:
+        return true;
+      case _TipoFiltro.evaluaciones:
+        return tipo == 'EVALUACION';
+      case _TipoFiltro.actividades:
+        return tipo == 'ACTIVIDAD' && !esActo;
+      case _TipoFiltro.actos:
+        return esActo;
+      case _TipoFiltro.reuniones:
+        return tipo == 'REUNION';
+    }
+  }
+
+  /// ¿El evento entra en el ámbito + tipo elegidos?
   bool _pasaFiltro(Map<String, dynamic> e) {
+    // El Libro de Temas tiene su propia vista; acá nunca se muestran.
+    if ((e['tipo_evento'] ?? '').toString().toUpperCase() == 'TEMARIO') return false;
+    if (!_pasaTipo(e)) return false;
     if (_filtro == _FiltroCal.todas) return true;
     final cursoEv = e['curso_id']?.toString();
     final materiaEv = e['materia_id']?.toString();
@@ -278,6 +347,7 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
         (evento['titulo'] ?? '').toString().startsWith('[INTERNO]');
     bool notificarPadres = false;
     bool notificarDocentes = false;
+    DateTime fechaSel = fecha;
 
     showModalBottomSheet(
       context: context,
@@ -295,11 +365,31 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${editando ? 'Editar evento' : 'Nuevo evento'} — '
-                  '${fecha.day.toString().padLeft(2, '0')}/'
-                  '${fecha.month.toString().padLeft(2, '0')}/${fecha.year}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                Row(
+                  children: [
+                    Text(
+                      editando ? 'Editar evento' : 'Nuevo evento',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const Spacer(),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.event_rounded, size: 16),
+                      label: Text(
+                        '${fechaSel.day.toString().padLeft(2, '0')}/'
+                        '${fechaSel.month.toString().padLeft(2, '0')}/${fechaSel.year}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: ctx,
+                          initialDate: fechaSel,
+                          firstDate: DateTime(fechaSel.year - 1),
+                          lastDate: DateTime(fechaSel.year + 2),
+                        );
+                        if (picked != null) setS(() => fechaSel = picked);
+                      },
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
 
@@ -427,14 +517,14 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                                   eventoId: (evento['evento_id'] ?? evento['id']).toString(),
                                   titulo: esInterno ? '[INTERNO] $t' : t,
                                   descripcion: esInterno ? '[INTERNO] $d' : d,
-                                  fecha: _clave(fecha),
+                                  fecha: _clave(fechaSel),
                                   tipoEvento: tipoSeleccionado,
                                 );
                               } else {
                                 await _service.crearEventoCalendario(
                                   titulo: tituloCtrl.text.trim(),
                                   descripcion: descCtrl.text.trim(),
-                                  fecha: _clave(fecha),
+                                  fecha: _clave(fechaSel),
                                   tipoEvento: tipoSeleccionado,
                                   cursoId: cursoSeleccionadoId,
                                   materiaId: _filtro == _FiltroCal.estaMateria
@@ -570,12 +660,12 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
                       DateTime(_mesActual.year, _mesActual.month + 1);
                 }),
               ),
-              // Botón agregar evento (solo Admin/Preceptor y si hay día seleccionado)
+              // Botón agregar evento (Admin/Preceptor). Si no hay día
+              // seleccionado, el formulario arranca en el día de hoy.
               if (puedeAgregar)
                 FilledButton.icon(
-                  onPressed: _diaSeleccionado != null
-                      ? () => _abrirFormNuevoEvento(_diaSeleccionado!)
-                      : null,
+                  onPressed: () => _abrirFormNuevoEvento(
+                      _diaSeleccionado ?? DateTime.now()),
                   icon: const Icon(Icons.add_rounded, size: 16),
                   label: const Text('+ Agregar evento', style: TextStyle(fontSize: 12)),
                   style: FilledButton.styleFrom(
@@ -627,6 +717,30 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
               ),
             ),
           ),
+
+        // ── Filtro por tipo de evento ────────────────────────────────
+        SizedBox(
+          height: 40,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            children: [
+              for (final f in _TipoFiltro.values)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    label: Text(_labelFiltroTipo(f), style: const TextStyle(fontSize: 11)),
+                    selected: _tipoFiltro == f,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => setState(() {
+                      _tipoFiltro = f;
+                      _recomputarEventos();
+                    }),
+                  ),
+                ),
+            ],
+          ),
+        ),
 
         // ── Días de la semana + grid ─────────────────────────────────
         // Ancho acotado: sin esto, en pantalla ancha las celdas quedaban de
