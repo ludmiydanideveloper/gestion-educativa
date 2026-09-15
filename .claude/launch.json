@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "GestionEscolar Flutter Web",
-      "runtimeExecutable": "C:\\src\\flutter\\bin\\flutter.bat",
+      "runtimeExecutable": "C:\\src\\fl3810\\bin\\flutter.bat",
       "runtimeArgs": [
         "run",
         "-d",
@@ -11,7 +11,8 @@
         "--web-port",
         "8080",
         "--web-hostname",
-        "localhost"
+        "localhost",
+        "--dart-define=SUPABASE_ANON_KEY=local-preview-key"
       ],
       "port": 8080
     }
