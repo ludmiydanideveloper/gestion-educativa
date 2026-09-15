@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
@@ -125,24 +128,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildBrandLogo({double size = 76.0}) {
-    return Container(
-      padding: const EdgeInsets.all(14.0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(30),
-            blurRadius: 18.0,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: BrandLogo(height: size),
-    );
-  }
-
   Widget _buildFeatureItem(IconData icon, String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 18.0),
@@ -152,7 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
           Container(
             padding: const EdgeInsets.all(10.0),
             decoration: BoxDecoration(
-              color: Colors.white.withAlpha(30),
+              color: Colors.white.withAlpha(35),
               borderRadius: BorderRadius.circular(12.0),
             ),
             child: Icon(icon, color: Colors.white, size: 20.0),
@@ -162,79 +147,12 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Text(
               text,
               style: TextStyle(
-                color: Colors.white.withAlpha(230),
+                color: Colors.white.withAlpha(235),
                 fontSize: 14.5,
                 fontWeight: FontWeight.w500,
                 height: 1.3,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Panel izquierdo con degradé institucional, marca y propuesta de valor.
-  // Solo se muestra en pantallas anchas (web de escritorio).
-  Widget _buildBrandPanel() {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.secondaryColor,
-            AppTheme.primaryColor,
-            Color(0xFF081C34),
-          ],
-        ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            top: -70.0,
-            left: -60.0,
-            child: _softCircle(220.0),
-          ),
-          Positioned(
-            bottom: -90.0,
-            right: -70.0,
-            child: _softCircle(260.0),
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 48.0, vertical: 40.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildBrandLogo(),
-                  const SizedBox(height: 28.0),
-                  const Text(
-                    'SGE Gestión Educativa',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 30.0,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5,
-                      height: 1.15,
-                    ),
-                  ),
-                  const SizedBox(height: 12.0),
-                  Text(
-                    'Plataforma integral para la gestión académica, '
-                    'administrativa y pedagógica de tu institución.',
-                    style: TextStyle(
-                      color: Colors.white.withAlpha(220),
-                      fontSize: 15.0,
-                      height: 1.5,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                  const SizedBox(height: 40.0),
-                  ..._features.map(
-                    (f) => _buildFeatureItem(f['icon'] as IconData, f['text'] as String),
-                  ),
+                shadows: [
+                  Shadow(color: Colors.black.withAlpha(90), blurRadius: 6.0),
                 ],
               ),
             ),
@@ -244,55 +162,114 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _softCircle(double size) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [
-            Colors.white.withAlpha(28),
-            Colors.white.withAlpha(0),
-          ],
+  // Panel de marca: carrusel de fotos de la escuela con un velo que solo
+  // oscurece la parte de abajo (donde va el texto), para que la foto se siga
+  // viendo arriba. Solo se usa en pantallas anchas (web de escritorio).
+  Widget _buildBrandPanel() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const _SchoolCarousel(),
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: const [0.0, 0.42, 1.0],
+              colors: [
+                Colors.transparent,
+                const Color(0xFF081C34).withAlpha(70),
+                const Color(0xFF081C34).withAlpha(235),
+              ],
+            ),
+          ),
         ),
-      ),
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48.0, vertical: 40.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                const Text(
+                  'SGE Gestión Educativa',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 30.0,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 12.0),
+                Text(
+                  'Plataforma integral para la gestión académica, '
+                  'administrativa y pedagógica de tu institución.',
+                  style: TextStyle(
+                    color: Colors.white.withAlpha(225),
+                    fontSize: 15.0,
+                    height: 1.5,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(height: 32.0),
+                ..._features.map(
+                  (f) => _buildFeatureItem(f['icon'] as IconData, f['text'] as String),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
-  // Encabezado compacto con degradé, usado solo en pantallas angostas (mobile web).
+  // Encabezado compacto con el carrusel, usado solo en pantallas angostas (mobile web).
   Widget _buildMobileHeader() {
-    return Container(
+    return SizedBox(
+      height: 240.0,
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(24.0, 36.0, 24.0, 56.0),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.secondaryColor,
-            AppTheme.primaryColor,
-          ],
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            _buildBrandLogo(size: 60.0),
-            const SizedBox(height: 16.0),
-            const Text(
-              'SGE Gestión Educativa',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20.0,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.2,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const _SchoolCarousel(),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: const [0.0, 0.5, 1.0],
+                colors: [
+                  Colors.transparent,
+                  const Color(0xFF081C34).withAlpha(60),
+                  const Color(0xFF081C34).withAlpha(210),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 18.0),
+                child: Text(
+                  'SGE Gestión Educativa',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 21.0,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                    shadows: [
+                      Shadow(color: Colors.black.withAlpha(100), blurRadius: 8.0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -303,6 +280,11 @@ class _LoginScreenState extends State<LoginScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: BrandLogo(height: 84.0),
+          ),
+          const SizedBox(height: 26.0),
           const Text(
             'Bienvenido/a',
             style: TextStyle(
@@ -421,7 +403,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
             ),
           ),
-          const SizedBox(height: 8.0),
         ],
       ),
     );
@@ -445,30 +426,58 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // Arma el contenido de forma que, cuando la pantalla es alta, el pie de
+  // Frankia quede pegado abajo del todo; en pantallas bajas, simplemente
+  // se puede hacer scroll y queda después del formulario.
+  Widget _buildPinnedFooterArea({
+    required EdgeInsets padding,
+    double maxContentWidth = double.infinity,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double minHeight = (constraints.maxHeight - padding.vertical).clamp(0.0, double.infinity);
+        return SingleChildScrollView(
+          padding: padding,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: IntrinsicHeight(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: maxContentWidth),
+                      child: _buildAnimatedForm(),
+                    ),
+                  ),
+                  const Spacer(),
+                  const SizedBox(height: 16.0),
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: maxContentWidth),
+                      child: const BrandFrankiaFooter(isDark: false),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildWideLayout() {
     return Row(
       children: [
-        Expanded(flex: 5, child: _buildBrandPanel()),
+        Expanded(flex: 6, child: _buildBrandPanel()),
         Expanded(
           flex: 4,
           child: Container(
             color: Colors.white,
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 32.0),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 400.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildAnimatedForm(),
-                      const SizedBox(height: 24.0),
-                      const BrandFrankiaFooter(isDark: false),
-                    ],
-                  ),
-                ),
-              ),
+            child: _buildPinnedFooterArea(
+              padding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 32.0),
+              maxContentWidth: 400.0,
             ),
           ),
         ),
@@ -492,16 +501,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   topRight: Radius.circular(28.0),
                 ),
               ),
-              child: SingleChildScrollView(
+              child: _buildPinnedFooterArea(
                 padding: const EdgeInsets.fromLTRB(24.0, 32.0, 24.0, 16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildAnimatedForm(),
-                    const SizedBox(height: 16.0),
-                    const BrandFrankiaFooter(isDark: false),
-                  ],
-                ),
               ),
             ),
           ),
@@ -520,6 +521,135 @@ class _LoginScreenState extends State<LoginScreen> {
           return isWide ? _buildWideLayout() : _buildNarrowLayout();
         },
       ),
+    );
+  }
+}
+
+/// Carrusel de fotos de la escuela para el panel de marca del login.
+///
+/// Busca archivos `carrusel_1.jpg` … `carrusel_6.jpg` (o .jpeg/.png/.webp) en
+/// `assets/images/carrusel/`. Si no se subió ninguna foto todavía, muestra un
+/// degradé institucional de respaldo en vez de romper la pantalla.
+class _SchoolCarousel extends StatefulWidget {
+  const _SchoolCarousel();
+
+  @override
+  State<_SchoolCarousel> createState() => _SchoolCarouselState();
+}
+
+class _SchoolCarouselState extends State<_SchoolCarousel> {
+  static const int _maxSlides = 6;
+  static const List<String> _extensions = ['jpg', 'jpeg', 'png', 'webp'];
+
+  final PageController _pageController = PageController();
+  Timer? _timer;
+  int _currentPage = 0;
+  List<String> _images = const [];
+  bool _resolved = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveAvailableImages();
+  }
+
+  Future<void> _resolveAvailableImages() async {
+    final List<String> found = [];
+    for (int i = 1; i <= _maxSlides; i++) {
+      for (final ext in _extensions) {
+        final path = 'assets/images/carrusel/carrusel_$i.$ext';
+        try {
+          await rootBundle.load(path);
+          found.add(path);
+          break;
+        } catch (_) {
+          // Ese archivo no fue provisto: se ignora en silencio.
+        }
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _images = found;
+      _resolved = true;
+    });
+
+    if (found.length > 1) {
+      _timer = Timer.periodic(const Duration(seconds: 6), (_) {
+        if (!mounted || !_pageController.hasClients) return;
+        final next = (_currentPage + 1) % _images.length;
+        _pageController.animateToPage(
+          next,
+          duration: const Duration(milliseconds: 900),
+          curve: Curves.easeInOutCubic,
+        );
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Widget _fallback() {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.secondaryColor,
+            AppTheme.primaryColor,
+            Color(0xFF081C34),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_resolved || _images.isEmpty) {
+      return _fallback();
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        PageView.builder(
+          controller: _pageController,
+          itemCount: _images.length,
+          onPageChanged: (i) => setState(() => _currentPage = i),
+          itemBuilder: (context, index) {
+            return Image.asset(_images[index], fit: BoxFit.cover);
+          },
+        ),
+        if (_images.length > 1)
+          Positioned(
+            bottom: 18.0,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(_images.length, (i) {
+                final bool active = i == _currentPage;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  margin: const EdgeInsets.symmetric(horizontal: 3.0),
+                  width: active ? 18.0 : 6.0,
+                  height: 6.0,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(active ? 255 : 130),
+                    borderRadius: BorderRadius.circular(3.0),
+                  ),
+                );
+              }),
+            ),
+          ),
+      ],
     );
   }
 }
