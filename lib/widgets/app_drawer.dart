@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
-import '../screens/dashboard_preceptor.dart';
 import '../screens/bandeja_mensajes.dart';
 import '../screens/panel_conducta.dart';
 import '../screens/mi_perfil_screen.dart';
@@ -128,9 +127,11 @@ class _AppDrawerState extends State<AppDrawer> {
             title: const Text('Inicio (Dashboard)'),
             onTap: () {
               Navigator.of(context).pop();
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const DashboardPreceptor()),
-              );
+              // La ruta raíz ya es el Dashboard (AuthGate lo decide por rol):
+              // volver a ella en vez de empujar una instancia nueva, así no
+              // se van acumulando Dashboards apilados que después tapan el
+              // LoginScreen al cerrar sesión.
+              Navigator.of(context).popUntil((route) => route.isFirst);
             },
           ),
 
@@ -284,9 +285,9 @@ class _AppDrawerState extends State<AppDrawer> {
               title: const Text('Toma de Asistencia'),
               onTap: () {
                 Navigator.of(context).pop();
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (_) => const DashboardPreceptor()),
-                );
+                // Igual que "Inicio": volver a la raíz en vez de apilar otro
+                // Dashboard encima.
+                Navigator.of(context).popUntil((route) => route.isFirst);
               },
             ),
             ListTile(
@@ -376,9 +377,15 @@ class _AppDrawerState extends State<AppDrawer> {
             leading: const Icon(Icons.logout_rounded, color: Colors.red),
             title: const Text('Cerrar Sesión',
                 style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-            onTap: () {
+            onTap: () async {
               Navigator.of(context).pop();
-              _supabaseService.signOut();
+              await _supabaseService.signOut();
+              // Volver a la primera ruta del stack: si el usuario venía de
+              // varias pantallas empujadas, AuthGate reconstruye a
+              // LoginScreen por debajo pero queda tapado por esas rutas.
+              if (context.mounted) {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              }
             },
           ),
           const Divider(),

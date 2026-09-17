@@ -34,6 +34,24 @@ class SupabaseService {
         .eq('alerta_id', alertaId);
   }
 
+  /// Alertas académicas pendientes de gestionar (Panel de Alertas). Este
+  /// proyecto no tiene Realtime habilitado en Supabase para ninguna tabla,
+  /// así que se lee con polling en vez de un stream — consistente con el
+  /// resto de la app.
+  Future<List<Map<String, dynamic>>> obtenerAlertasPendientes() async {
+    try {
+      final res = await _client
+          .from('acad_alertas')
+          .select('*')
+          .eq('estado', 'PENDIENTE')
+          .order('fecha_creacion');
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint('Error al obtener alertas pendientes: $e');
+      return [];
+    }
+  }
+
   /// Obtiene los detalles de asistencia del alumno autenticado.
   /// Supabase filtra los registros automáticamente vía Row Level Security (RLS)
   /// basándose en el auth.uid() de la sesión.
@@ -98,6 +116,44 @@ class SupabaseService {
         .update({'fecha_lectura': DateTime.now().toUtc().toIso8601String()})
         .eq('usuario_id', user.id)
         .isFilter('fecha_lectura', null);
+  }
+
+  /// Movimientos de personal (docentes/preceptores) para Dirección: reusa las
+  /// notificaciones "Movimiento ..." que ya se generan al cargar notas, tomar
+  /// asistencia, crear actividades, incidencias de conducta, etc. — hoy solo
+  /// visibles mezcladas en el Cuaderno Digital. Excluye a propósito
+  /// "Movimiento de Familias: ..." (trámites que inician los padres): el
+  /// Panel de Alertas debe mostrar sólo lo que hace el personal.
+  Future<List<Map<String, dynamic>>> obtenerMovimientosStaff({int limite = 100}) async {
+    final user = _client.auth.currentUser;
+    if (user == null) return [];
+    try {
+      final res = await _client
+          .from('com_destinatarios')
+          .select('''
+            destinatario_id,
+            com_mensajes!inner (
+              mensaje_id,
+              emisor_id,
+              asunto,
+              cuerpo,
+              fecha_creacion
+            )
+          ''')
+          .eq('usuario_id', user.id)
+          .like('com_mensajes.asunto', 'Movimiento%')
+          .order('fecha_creacion', referencedTable: 'com_mensajes', ascending: false)
+          .limit(limite);
+
+      final list = List<Map<String, dynamic>>.from(res);
+      return list
+          .map((row) => Map<String, dynamic>.from(row['com_mensajes'] as Map))
+          .where((m) => !(m['asunto'] ?? '').toString().startsWith('Movimiento de Familias'))
+          .toList();
+    } catch (e) {
+      debugPrint('Error al obtener movimientos de personal: $e');
+      return [];
+    }
   }
 
   Future<List<AlumnoAsistencia>> fetchAlumnos({String? cursoId}) async {
@@ -1120,14 +1176,74 @@ class SupabaseService {
     final response = await _client
         .from('asistencia_detalle')
         .select('''
-          asistencia_detalle_id, 
-          valor_inasistencia, 
-          tipo, 
-          estado_justificacion, 
+          asistencia_detalle_id,
+          valor_inasistencia,
+          tipo,
+          estado_justificacion,
           asistencia_cabecera (fecha)
         ''')
         .eq('alumno_id', alumnoId);
     return List<Map<String, dynamic>>.from(response);
+  }
+
+  /// Desglose real de asistencia por materia para un alumno, a partir de
+  /// asistencia_detalle/asistencia_cabecera (solo tomas tipo POR_MATERIA,
+  /// las PRECEPTOR_DIARIA no tienen materia_id).
+  Future<List<Map<String, dynamic>>> obtenerFaltasPorMateriaAlumno(String alumnoId) async {
+    final response = await _client
+        .from('asistencia_detalle')
+        .select('''
+          tipo, valor_inasistencia,
+          asistencia_cabecera!inner(materia_id, tipo_asistencia, acad_materias(nombre_asignatura))
+        ''')
+        .eq('alumno_id', alumnoId)
+        .eq('asistencia_cabecera.tipo_asistencia', 'POR_MATERIA');
+
+    final Map<String, Map<String, dynamic>> porMateria = {};
+
+    for (final row in List<Map<String, dynamic>>.from(response)) {
+      final cabecera = row['asistencia_cabecera'] as Map<String, dynamic>?;
+      final materiaId = cabecera?['materia_id']?.toString();
+      if (materiaId == null) continue;
+      final materiaInfo = cabecera?['acad_materias'] as Map<String, dynamic>?;
+
+      final entry = porMateria.putIfAbsent(materiaId, () => {
+            'materia_id': materiaId,
+            'materia': materiaInfo?['nombre_asignatura']?.toString() ?? 'Materia',
+            'presentes': 0,
+            'ausentes': 0,
+            'total': 0,
+            'faltas': 0.0,
+          });
+
+      entry['total'] = (entry['total'] as int) + 1;
+      if (row['tipo']?.toString() == 'PRESENTE') {
+        entry['presentes'] = (entry['presentes'] as int) + 1;
+      } else {
+        entry['ausentes'] = (entry['ausentes'] as int) + 1;
+      }
+      entry['faltas'] = (entry['faltas'] as double) + ((row['valor_inasistencia'] as num?)?.toDouble() ?? 0.0);
+    }
+
+    return porMateria.values.map((e) {
+      final total = e['total'] as int;
+      final presentes = e['presentes'] as int;
+      final faltas = e['faltas'] as double;
+      final porcentaje = total > 0 ? (presentes / total * 100) : 100.0;
+      final String estado;
+      if (faltas <= 0) {
+        estado = 'ASISTENCIA PERFECTA';
+      } else if (faltas > 3) {
+        estado = 'ALERTA RITE';
+      } else {
+        estado = 'REGULAR';
+      }
+      return {
+        ...e,
+        'porcentaje': '${porcentaje.toStringAsFixed(1)}%',
+        'estado': estado,
+      };
+    }).toList();
   }
 
   /// Obtiene todas las calificaciones para un alumno específico
@@ -1791,18 +1907,18 @@ class SupabaseService {
 
   /// Obtiene los IDs de administración, dirección y preceptoría para notificaciones y alertas
   Future<List<String>> obtenerAuthIdsAdministracion() async {
-    final List<String> ids = ['sec-admin', 'admin-maria-funes', 'prec-martin', 'prec-clara'];
+    final List<String> ids = [];
     try {
       final res = await _client.from('usr_docentes').select('auth_id, ddjj_cargos');
       for (var r in res) {
         final authId = r['auth_id']?.toString() ?? '';
         final cargos = r['ddjj_cargos']?.toString().toUpperCase() ?? '';
-        if (authId.isNotEmpty && (cargos.contains('ADMIN') || cargos.contains('DIRECT') || cargos.contains('PRECEPTOR') || authId.contains('admin') || authId.contains('sec-'))) {
+        if (authId.isNotEmpty && (cargos.contains('ADMIN') || cargos.contains('DIRECT') || cargos.contains('PRECEPTOR'))) {
           ids.add(authId);
         }
       }
     } catch (e) {
-      print('Fallback al obtener IDs de administración: $e');
+      print('Error al obtener IDs de administración: $e');
     }
     return ids.toSet().toList();
   }
@@ -2721,8 +2837,9 @@ class SupabaseService {
     required String estado,
     String? fechaInicio,
     String? fechaFin,
+    List<String>? involucradosAuthIds,
   }) async {
-    final data = {
+    final data = <String, dynamic>{
       'nombre': nombre,
       'descripcion': descripcion,
       'responsable': responsable,
@@ -2731,6 +2848,7 @@ class SupabaseService {
       'fecha_fin': fechaFin,
       'updated_at': DateTime.now().toIso8601String(),
     };
+    if (involucradosAuthIds != null) data['involucrados_auth_ids'] = involucradosAuthIds;
     if (id == null) {
       data['creado_por'] = _client.auth.currentUser?.id;
       final res = await _client.from('proy_institucionales').insert(data).select().single();
@@ -2748,6 +2866,56 @@ class SupabaseService {
 
   Future<void> eliminarProyecto(String id) async {
     await _client.from('proy_institucionales').delete().eq('id', id);
+  }
+
+  /// Proyectos donde el usuario autenticado figura como involucrado —
+  /// para la vista "Mis Proyectos" del docente.
+  Future<List<Map<String, dynamic>>> obtenerMisProyectos() async {
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) return [];
+    try {
+      final res = await _client
+          .from('proy_institucionales')
+          .select('*')
+          .contains('involucrados_auth_ids', [uid])
+          .order('created_at', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint('Error obtener mis proyectos: $e');
+      return [];
+    }
+  }
+
+  // ─── CHAT DEL PROYECTO (proy_mensajes) ─────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> obtenerMensajesProyecto(String proyectoId) async {
+    try {
+      final res = await _client
+          .from('proy_mensajes')
+          .select('*')
+          .eq('proyecto_id', proyectoId)
+          .order('created_at', ascending: true);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint('Error obtener mensajes del proyecto: $e');
+      return [];
+    }
+  }
+
+  Future<void> enviarMensajeProyecto({
+    required String proyectoId,
+    required String texto,
+  }) async {
+    await _client.from('proy_mensajes').insert({
+      'proyecto_id': proyectoId,
+      'autor_auth_id': _client.auth.currentUser?.id,
+      'autor_nombre': _nombreUsuarioActual(),
+      'texto': texto,
+    });
+  }
+
+  Future<void> eliminarMensajeProyecto(String mensajeId) async {
+    await _client.from('proy_mensajes').delete().eq('id', mensajeId);
   }
 
   Future<List<Map<String, dynamic>>> obtenerDocsProyecto(String proyectoId) async {
@@ -3604,12 +3772,75 @@ class SupabaseService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> obtenerDetallesBoletin(String boletinId) async {
+  /// Mapea las claves del Boletín Cualitativo del docente (aca_rubricas_cualitativas,
+  /// prefijo 'criterio_') a las columnas que lee el Informe de Trayectoria
+  /// (aca_boletin_detalle), que usa otro nombre para cada campo.
+  static const _kMapaCriteriosABoletinDetalle = {
+    'criterio_apropiacion': 'apropiacion_contenidos',
+    'criterio_resolucion': 'resolucion_actividades',
+    'criterio_participacion': 'participacion_clases',
+    'criterio_planteos': 'planteos_dudas',
+    'criterio_entrega': 'entrega_actividades',
+    'criterio_prolijidad': 'prolijidad_carpeta',
+    'criterio_aic': 'cumplimiento_aic',
+  };
+
+  /// Última rúbrica cualitativa cargada por el docente (aca_rubricas_cualitativas)
+  /// para cada materia de un alumno, sin importar la etapa — se usa como snapshot
+  /// "actual" en los informes, ya que ese campo no distingue etapa.
+  Future<Map<String, Map<String, dynamic>>> obtenerRubricasCualitativasPorAlumno(String alumnoId) async {
+    try {
+      final res = await _client
+          .from('aca_rubricas_cualitativas')
+          .select('*')
+          .eq('alumno_id', alumnoId)
+          .order('updated_at', ascending: false);
+      final porMateria = <String, Map<String, dynamic>>{};
+      for (final r in List<Map<String, dynamic>>.from(res)) {
+        final matId = r['materia_id']?.toString();
+        // Ya viene ordenado por más reciente primero: la primera que aparece
+        // para cada materia es la última cargada.
+        if (matId != null) porMateria.putIfAbsent(matId, () => r);
+      }
+      return porMateria;
+    } catch (e) {
+      debugPrint('Error al obtener rúbricas cualitativas del alumno: $e');
+      return {};
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> obtenerDetallesBoletin(String boletinId, {String? alumnoId}) async {
     final res = await _client
         .from('aca_boletin_detalle')
         .select('*, acad_materias(nombre_asignatura)')
         .eq('boletin_id', boletinId);
-    return List<Map<String, dynamic>>.from(res);
+    final detalles = List<Map<String, dynamic>>.from(res);
+    if (alumnoId == null) return detalles;
+
+    // aca_boletin_detalle se completa a mano en el cierre formal y hoy está
+    // vacía: mientras tanto, completar los criterios cualitativos con lo que
+    // el docente ya cargó en el Boletín Cualitativo (aca_rubricas_cualitativas),
+    // sin pisar un cierre que ya se haya cargado a mano.
+    final rubricasPorMateria = await obtenerRubricasCualitativasPorAlumno(alumnoId);
+    if (rubricasPorMateria.isEmpty) return detalles;
+
+    final materiasConDetalle = detalles.map((d) => d['materia_id']?.toString()).toSet();
+    for (final entry in rubricasPorMateria.entries) {
+      final matId = entry.key;
+      final rubrica = entry.value;
+      if (materiasConDetalle.contains(matId)) {
+        final d = detalles.firstWhere((x) => x['materia_id']?.toString() == matId);
+        for (final e in _kMapaCriteriosABoletinDetalle.entries) {
+          if ((d[e.value] ?? '').toString().isEmpty) d[e.value] = rubrica[e.key];
+        }
+      } else {
+        detalles.add({
+          'materia_id': matId,
+          for (final e in _kMapaCriteriosABoletinDetalle.entries) e.value: rubrica[e.key],
+        });
+      }
+    }
+    return detalles;
   }
 
   Future<void> guardarRubricasCualitativas(List<Map<String, dynamic>> rubricas) async {

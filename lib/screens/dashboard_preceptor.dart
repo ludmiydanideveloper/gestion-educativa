@@ -21,6 +21,7 @@ import 'panel_conducta_diaria.dart';
 import 'panel_libro_actas.dart';
 import 'panel_materias_adeudadas.dart';
 import 'panel_repositorio_documentos.dart';
+import 'panel_mis_proyectos.dart';
 import 'mi_perfil_screen.dart';
 import '../widgets/app_drawer.dart';
 
@@ -293,7 +294,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
         IconButton(
           icon: const Icon(Icons.logout_rounded),
           tooltip: 'Cerrar sesión',
-          onPressed: () => SupabaseService().signOut(),
+          onPressed: () => _cerrarSesion(context),
         ),
       ],
     );
@@ -540,7 +541,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
             title: 'Cerrar Sesión',
             onTap: () {
               Navigator.of(context).pop();
-              SupabaseService().signOut();
+              _cerrarSesion(context);
             },
           ),
         ],
@@ -565,6 +566,19 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
   void _setSeccion(_DocenteSection s) {
     Navigator.of(context).pop();
     setState(() => _seccionActual = s);
+  }
+
+  /// Cierra sesión y vuelve a la primera ruta del stack. Sin esto, si el
+  /// usuario venía de varias pantallas empujadas con Navigator.push (o de un
+  /// "Inicio" del drawer que reemplaza la ruta con pushReplacement en vez de
+  /// volver), AuthGate reconstruye a LoginScreen por debajo pero queda tapado
+  /// por las rutas que siguen apiladas encima: el botón "Cerrar sesión"
+  /// parece no hacer nada.
+  Future<void> _cerrarSesion(BuildContext context) async {
+    await SupabaseService().signOut();
+    if (context.mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
   }
 
   // ─── CUERPO PRINCIPAL DOCENTE (router por sección) ────────────────────────
@@ -800,6 +814,30 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
                 },
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade800, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 12)),
                 child: const Text('Entrar', style: TextStyle(fontSize: 11)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Proyectos institucionales donde este docente figura como involucrado.
+          Card(
+            elevation: 0,
+            color: Colors.indigo.shade50,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.indigo.shade200),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.groups_2_rounded, color: Colors.indigo, size: 24),
+              title: const Text('Mis Proyectos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              subtitle: const Text('Proyectos institucionales y chat interno con el equipo', style: TextStyle(fontSize: 11)),
+              trailing: ElevatedButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const PanelMisProyectos()),
+                ),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.indigo, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 12)),
+                child: const Text('Ver', style: TextStyle(fontSize: 11)),
               ),
             ),
           ),

@@ -181,7 +181,15 @@ class _PortalFamiliaState extends State<PortalFamilia> {
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             tooltip: 'Cerrar Sesión',
-            onPressed: () => _supabaseService.signOut(),
+            onPressed: () async {
+              await _supabaseService.signOut();
+              // Volver a la primera ruta: si venía de una pantalla empujada
+              // (ej. Ficha de un hijo), AuthGate reconstruye a LoginScreen
+              // por debajo pero queda tapado por esa ruta apilada.
+              if (context.mounted) {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              }
+            },
           ),
         ],
       ),

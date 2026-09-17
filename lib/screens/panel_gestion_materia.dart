@@ -8,6 +8,7 @@ import 'panel_temarios_preceptor.dart';
 import 'panel_planificacion_diaria.dart';
 import 'panel_eoe_docente.dart';
 import 'panel_banco_evaluaciones.dart';
+import 'panel_pedagogico_materia.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/calendario_docente.dart';
 
@@ -178,6 +179,22 @@ class PanelGestionMateria extends StatelessWidget {
                       builder: (context) => PanelTemariosPreceptor(
                         cursoIdInicial: cursoId,
                         isReadOnly: false,
+                      ),
+                    ),
+                  ),
+                ),
+                _buildSlenderActionCard(
+                  context: context,
+                  title: 'Repositorio Pedagógico',
+                  description: 'Subir planificación, contrato pedagógico y criterios de evaluación',
+                  icon: Icons.folder_shared_rounded,
+                  color: Colors.indigo.shade700,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => PanelPedagogicoMateria(
+                        materiaId: materiaId,
+                        cursoId: cursoId,
+                        nombreAsignatura: nombreAsignatura,
                       ),
                     ),
                   ),

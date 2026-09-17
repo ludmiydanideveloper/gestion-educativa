@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/supabase_service.dart';
 import '../services/print_helper.dart';
 import '../widgets/brand_widgets.dart';
+import '../widgets/chat_proyecto_dialog.dart';
 import 'panel_boletines_preceptor.dart';
 
 class PanelAdministracion extends StatefulWidget {
@@ -48,6 +49,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
   // Estados del Repositorio Pedagógico
   String? _repCursoId;
   String? _repMateriaId;
+  String? _repDocenteFiltro;
   int _pedRepoRefresh = 0;
 
   // Estados de EOE (Gabinete Psicopedagógico) — persistido en eoe_ficha /
@@ -629,21 +631,33 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     }
   }
 
-  void _mostrarDetalleYFaltasPorMateriaAlumno(Map<String, dynamic> alumno) {
+  Future<void> _mostrarDetalleYFaltasPorMateriaAlumno(Map<String, dynamic> alumno) async {
     final String name = alumno['nombre_completo']?.toString().toUpperCase() ?? 'ALUMNO';
     final String dni = alumno['dni']?.toString() ?? 'Sin DNI';
     final String curso = alumno['curso_nombre'] ?? 'Curso Asignado';
-    final double totalInasistencias = (name.length % 5) + 0.5;
+    final String? legajoId = alumno['legajo_id']?.toString();
+    final String? cursoId = alumno['curso_id']?.toString();
 
-    final List<Map<String, dynamic>> faltasMateria = [
-      {'materia': 'Matemática I/II/III', 'presentes': 30, 'ausentes': 2, 'faltas': 2.0, 'porcentaje': '93.7%', 'estado': 'REGULAR'},
-      {'materia': 'Prácticas del Lenguaje', 'presentes': 32, 'ausentes': 0, 'faltas': 0.0, 'porcentaje': '100%', 'estado': 'ASISTENCIA PERFECTA'},
-      {'materia': 'Ciencias Naturales / Biología', 'presentes': 29, 'ausentes': 3, 'faltas': 3.0, 'porcentaje': '90.6%', 'estado': 'REGULAR'},
-      {'materia': 'Historia / Construcción Ciudadana', 'presentes': 31, 'ausentes': 1, 'faltas': 1.0, 'porcentaje': '96.8%', 'estado': 'REGULAR'},
-      {'materia': 'Geografía General', 'presentes': 30, 'ausentes': 2, 'faltas': 2.0, 'porcentaje': '93.7%', 'estado': 'REGULAR'},
-      {'materia': 'Inglés Técnico', 'presentes': 28, 'ausentes': 4, 'faltas': 4.0, 'porcentaje': '87.5%', 'estado': 'ALERTA RITE'},
-      {'materia': 'Educación Física', 'presentes': 32, 'ausentes': 0, 'faltas': 0.0, 'porcentaje': '100%', 'estado': 'ASISTENCIA PERFECTA'},
-    ];
+    if (legajoId == null) {
+      _mostrarError('No se encontró el legajo del alumno.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    List<Map<String, dynamic>> faltasMateria;
+    double totalInasistencias;
+    try {
+      faltasMateria = await _supabaseService.obtenerFaltasPorMateriaAlumno(legajoId);
+      totalInasistencias = cursoId != null
+          ? await _supabaseService.calcularInasistenciasTotales(legajoId, cursoId, DateTime.now().year)
+          : faltasMateria.fold(0.0, (sum, fm) => sum + (fm['faltas'] as double));
+    } catch (e) {
+      setState(() => _isLoading = false);
+      _mostrarError('Error al cargar la asistencia del alumno: $e');
+      return;
+    }
+    setState(() => _isLoading = false);
+    if (!mounted) return;
 
     showDialog(
       context: context,
@@ -706,6 +720,15 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                 const SizedBox(height: 18),
                 const Text('Detalle Curricular y Faltas por Asignatura (RITE):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 const SizedBox(height: 10),
+                if (faltasMateria.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12.0),
+                    child: Text(
+                      'Todavía no hay tomas de asistencia por materia registradas para este alumno.',
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                  )
+                else
                 Container(
                   decoration: BoxDecoration(
                     border: Border.all(color: Colors.grey.shade300),
@@ -1625,7 +1648,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                                     const Icon(Icons.send_rounded, color: Colors.white),
                                     const SizedBox(width: 12),
                                     const Expanded(
-                                      child: Text('¡Evento agendado con éxito! Se ha enviado una notificación recordatoria por mail/app a todos los alumnos, tutores y docentes involucrados.'),
+                                      child: Text('¡Evento agendado con éxito! Ya aparece en el calendario del curso correspondiente.'),
                                     ),
                                   ],
                                 ),
@@ -3224,8 +3247,50 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                     child: Text('Sin documentos cargados para esta materia.', style: TextStyle(color: Colors.grey)),
                   );
                 }
+
+                // Filtro por docente: se arma con los nombres que realmente
+                // subieron algo en esta materia, no con todo el plantel.
+                final docentesDisponibles = docs
+                    .map((d) => (d['subido_por_nombre'] ?? '').toString())
+                    .where((n) => n.isNotEmpty)
+                    .toSet()
+                    .toList()
+                  ..sort();
+                if (_repDocenteFiltro != null && !docentesDisponibles.contains(_repDocenteFiltro)) {
+                  _repDocenteFiltro = null;
+                }
+                final docsFiltrados = _repDocenteFiltro == null
+                    ? docs
+                    : docs.where((d) => (d['subido_por_nombre'] ?? '').toString() == _repDocenteFiltro).toList();
+
                 return Column(
-                  children: docs.map((d) {
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (docentesDisponibles.length > 1) ...[
+                      SizedBox(
+                        width: 260,
+                        child: DropdownButtonFormField<String?>(
+                          initialValue: _repDocenteFiltro,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Filtrar por docente',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                            prefixIcon: Icon(Icons.person_search_rounded, size: 18),
+                          ),
+                          items: [
+                            const DropdownMenuItem<String?>(value: null, child: Text('Todos los docentes')),
+                            ...docentesDisponibles.map((n) => DropdownMenuItem<String?>(
+                                  value: n,
+                                  child: Text(n, overflow: TextOverflow.ellipsis),
+                                )),
+                          ],
+                          onChanged: (v) => setState(() => _repDocenteFiltro = v),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    ...docsFiltrados.map((d) {
                     final estado = (d['estado'] ?? 'PENDIENTE').toString();
                     final color = estado == 'APROBADO'
                         ? Colors.green
@@ -3298,7 +3363,8 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                         ),
                       ),
                     );
-                  }).toList(),
+                  }),
+                  ],
                 );
               },
             ),
@@ -4972,7 +5038,10 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                               children: [
                                 Text(dia, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
                                 const SizedBox(height: 6),
-                                ...(porDia[dia]!..sort((a, b) => a['inicio'].toString().compareTo(b['inicio'].toString())))
+                                // porDia ya viene en el orden correcto: obtenerHorarioCurso ordena
+                                // por hora convertida a minutos. Un re-sort acá por texto ("7:00" >
+                                // "11:00" alfabéticamente) rompía ese orden — no volver a ordenar.
+                                ...porDia[dia]!
                                     .map((b) => Padding(
                                           padding: const EdgeInsets.symmetric(vertical: 3),
                                           child: Row(
@@ -5262,10 +5331,25 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: () {
-                      _mostrarExito('Notificación de fecha límite enviada a todos los docentes.');
-                      titleController.clear();
-                      descController.clear();
+                    onPressed: () async {
+                      final asunto = titleController.text.trim();
+                      final texto = descController.text.trim();
+                      if (asunto.isEmpty || texto.isEmpty) {
+                        _mostrarError('Completá el asunto y la descripción antes de enviar.');
+                        return;
+                      }
+                      try {
+                        await _supabaseService.enviarComunicadoGrupal(
+                          asunto: asunto,
+                          texto: texto,
+                          destinatariosRoles: const ['Todos los Docentes'],
+                        );
+                        _mostrarExito('Notificación enviada a todos los docentes (les llega a su Cuaderno Digital).');
+                        titleController.clear();
+                        descController.clear();
+                      } catch (e) {
+                        _mostrarError('Error al enviar la notificación: $e');
+                      }
                     },
                     child: const Text('Enviar Notificación'),
                   ),
@@ -5389,6 +5473,15 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                                     spacing: 8,
                                     children: [
                                       TextButton.icon(
+                                        onPressed: () => mostrarChatProyecto(
+                                          context,
+                                          proyectoId: p['id'].toString(),
+                                          nombreProyecto: (p['nombre'] ?? 'Proyecto').toString(),
+                                        ),
+                                        icon: const Icon(Icons.forum_rounded, size: 16),
+                                        label: const Text('Chat', style: TextStyle(fontSize: 12)),
+                                      ),
+                                      TextButton.icon(
                                         onPressed: () => _abrirArchivosProyecto(p),
                                         icon: const Icon(Icons.folder_rounded, size: 16),
                                         label: const Text('Archivos', style: TextStyle(fontSize: 12)),
@@ -5446,6 +5539,10 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
     DateTime? ini = DateTime.tryParse((proyecto?['fecha_inicio'] ?? '').toString());
     DateTime? fin = DateTime.tryParse((proyecto?['fecha_fin'] ?? '').toString());
     String estado = (proyecto?['estado'] ?? 'EN_CURSO').toString();
+    final involucrados = <String>{
+      ...((proyecto?['involucrados_auth_ids'] as List?)?.map((e) => e.toString()) ?? const []),
+    };
+    final personalConCuenta = _personal.where((p) => (p['auth_id'] ?? '').toString().isNotEmpty).toList();
 
     showDialog(
       context: context,
@@ -5506,6 +5603,47 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                         ),
                       ],
                     ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Involucrados (participan del chat interno)',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 180),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: personalConCuenta.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: Text('No hay personal con cuenta vinculada.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                            )
+                          : Scrollbar(
+                              child: ListView(
+                                shrinkWrap: true,
+                                children: personalConCuenta.map((p) {
+                                  final authId = p['auth_id'].toString();
+                                  final nombre = (p['nombre_completo'] ?? p['email'] ?? 'Personal').toString();
+                                  return CheckboxListTile(
+                                    dense: true,
+                                    value: involucrados.contains(authId),
+                                    title: Text(nombre, style: const TextStyle(fontSize: 13)),
+                                    controlAffinity: ListTileControlAffinity.leading,
+                                    onChanged: (v) => setD(() {
+                                      if (v == true) {
+                                        involucrados.add(authId);
+                                      } else {
+                                        involucrados.remove(authId);
+                                      }
+                                    }),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                    ),
                   ],
                 ),
               ),
@@ -5526,6 +5664,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                     estado: estado,
                     fechaInicio: ini?.toIso8601String().substring(0, 10),
                     fechaFin: fin?.toIso8601String().substring(0, 10),
+                    involucradosAuthIds: involucrados.toList(),
                   );
                   _cargarProyectos();
                   _mostrarExito(editando ? 'Proyecto actualizado.' : 'Proyecto creado.');

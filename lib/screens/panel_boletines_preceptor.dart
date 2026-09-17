@@ -183,7 +183,10 @@ class _PanelBoletinesPreceptorState extends State<PanelBoletinesPreceptor> {
                 _service.fetchMaterias(cursoId: _selectedCursoId!),
               ]).then((results) async {
                 final boletin = results[0] as Map<String, dynamic>;
-                final detalles = await _service.obtenerDetallesBoletin(boletin['boletin_id'] as String);
+                final detalles = await _service.obtenerDetallesBoletin(
+                  boletin['boletin_id'] as String,
+                  alumnoId: alumnoId,
+                );
                 return [boletin, detalles, results[1]];
               }),
               builder: (context, snapshot) {

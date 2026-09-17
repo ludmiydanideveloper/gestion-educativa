@@ -21,6 +21,10 @@ class _PanelHijoFamiliaState extends State<PanelHijoFamilia> {
   List<Map<String, dynamic>> _adeudadas = [];
   List<Map<String, dynamic>> _materias = [];
   List<Map<String, dynamic>> _categorias = [];
+  // materia_id → última rúbrica cualitativa cargada por el docente (S/MB/B/R
+  // por criterio), la misma fuente real que usa el Boletín Cualitativo del
+  // docente y el Informe de Trayectoria de Dirección.
+  Map<String, Map<String, dynamic>> _rubricasPorMateria = {};
 
   @override
   void initState() {
@@ -45,6 +49,7 @@ class _PanelHijoFamiliaState extends State<PanelHijoFamilia> {
         cursoId != null ? _service.fetchMaterias(cursoId: cursoId) : Future.value(<Map<String, dynamic>>[]),
         _service.obtenerCalendarioPorCurso(cursoId),
       ]);
+      final rubricasPorMateria = await _service.obtenerRubricasCualitativasPorAlumno(hijoId);
 
       // Consultar conducta
       final condResp = await Supabase.instance.client
@@ -68,6 +73,7 @@ class _PanelHijoFamiliaState extends State<PanelHijoFamilia> {
             .toList();
         _conducta = List<Map<String, dynamic>>.from(condResp);
         _adeudadas = List<Map<String, dynamic>>.from(adeudadasResp);
+        _rubricasPorMateria = rubricasPorMateria;
         _loading = false;
       });
     } catch (e) {
@@ -395,7 +401,6 @@ class _PanelHijoFamiliaState extends State<PanelHijoFamilia> {
 
                   String valorRite = 'S/C';
                   Color colorRite = Colors.grey;
-                  String cualitativo = 'En Proceso';
                   String numText = '-';
 
                   if (promedio != null) {
@@ -403,15 +408,39 @@ class _PanelHijoFamiliaState extends State<PanelHijoFamilia> {
                     if (promedio >= 7.0) {
                       valorRite = 'TEA';
                       colorRite = Colors.green.shade700;
-                      cualitativo = 'Apropiación Plena (MB/TEA)';
                     } else if (promedio >= 4.0) {
                       valorRite = 'TEP';
                       colorRite = Colors.orange.shade800;
-                      cualitativo = 'Desarrollo Satisfactorio (B/TEP)';
                     } else {
                       valorRite = 'TED';
                       colorRite = Colors.red.shade700;
-                      cualitativo = 'En Proceso de Apoyo (R/TED)';
+                    }
+                  }
+
+                  // Criterios cualitativos reales cargados por el docente en el
+                  // Boletín Cualitativo (aca_rubricas_cualitativas) — antes acá
+                  // se mostraba un texto inventado a partir del promedio numérico.
+                  String cualitativo = 'Sin evaluar aún';
+                  Color colorCualitativo = Colors.grey;
+                  String tooltipCualitativo =
+                      'Todavía no hay criterios cualitativos cargados por el docente para esta materia.';
+                  final rubrica = _rubricasPorMateria[matId];
+                  if (rubrica != null) {
+                    const prioridad = ['R', 'B', 'MB', 'S']; // el criterio más flojo domina el resumen
+                    final valores = <String>[];
+                    final detalle = <String>[];
+                    for (final c in _kCriteriosBoletin) {
+                      final v = (rubrica[c['key']] ?? '').toString();
+                      if (v.isNotEmpty) {
+                        valores.add(v);
+                        detalle.add('${c['label']}: $v');
+                      }
+                    }
+                    if (valores.isNotEmpty) {
+                      valores.sort((a, b) => prioridad.indexOf(a).compareTo(prioridad.indexOf(b)));
+                      cualitativo = _labelNivelCualitativo(valores.first);
+                      colorCualitativo = _colorNivelCualitativo(valores.first);
+                      tooltipCualitativo = detalle.join(' · ');
                     }
                   }
 
@@ -441,12 +470,12 @@ class _PanelHijoFamiliaState extends State<PanelHijoFamilia> {
                       ),
                       DataCell(
                         Tooltip(
-                          message: 'Contenidos, Actividades, Participación y AIC evaluados en clase',
+                          message: tooltipCualitativo,
                           child: Row(
                             children: [
-                              Icon(Icons.check_circle_outline, size: 16, color: colorRite),
+                              Icon(Icons.check_circle_outline, size: 16, color: colorCualitativo),
                               const SizedBox(width: 6),
-                              Text(cualitativo, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: colorRite)),
+                              Text(cualitativo, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: colorCualitativo)),
                             ],
                           ),
                         ),
@@ -482,7 +511,9 @@ class _PanelHijoFamiliaState extends State<PanelHijoFamilia> {
           ),
           const SizedBox(height: 24),
 
-          // Criterios de Evaluación Continuos (Pie del Boletín)
+          // Referencia de la escala cualitativa (legenda general, no un
+          // listado de lo evaluado — eso se ve por materia en la columna
+          // "Criterios Cualitativos" de la tabla, con el detalle en el tooltip).
           Card(
             elevation: 0,
             color: colorScheme.surfaceContainerHighest.withAlpha(60),
@@ -495,19 +526,18 @@ class _PanelHijoFamiliaState extends State<PanelHijoFamilia> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('CRITERIOS CUALITATIVOS EVALUADOS POR EL DOCENTE EN ESTA ETAPA:',
+                  const Text('ESCALA DE CRITERIOS CUALITATIVOS (apropiación de contenidos, resolución de '
+                          'actividades, participación, dudas, entrega, prolijidad y cumplimiento de los AIC):',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 12,
                     runSpacing: 6,
                     children: [
-                      _buildCriterioChip('✔ Apropiación de contenidos trabajados', colorScheme),
-                      _buildCriterioChip('✔ Resolución en tiempo y forma', colorScheme),
-                      _buildCriterioChip('✔ Participación activa en clases', colorScheme),
-                      _buildCriterioChip('✔ Planteo de dudas y sugerencias', colorScheme),
-                      _buildCriterioChip('✔ Prolijidad y carpeta completa', colorScheme),
-                      _buildCriterioChip('✔ Cumplimiento de los AIC*', colorScheme),
+                      _buildCriterioChip('S: Sobresaliente', colorScheme),
+                      _buildCriterioChip('MB: Muy Bueno', colorScheme),
+                      _buildCriterioChip('B: Bueno', colorScheme),
+                      _buildCriterioChip('R: Regular', colorScheme),
                     ],
                   ),
                 ],
@@ -517,6 +547,49 @@ class _PanelHijoFamiliaState extends State<PanelHijoFamilia> {
         ],
       ),
     );
+  }
+
+  // Mismos 7 criterios que carga el docente en el Boletín Cualitativo
+  // (panel_calificaciones.dart) y que lee Dirección en el Informe de
+  // Trayectoria — clave real en aca_rubricas_cualitativas → etiqueta corta.
+  static const _kCriteriosBoletin = [
+    {'key': 'criterio_apropiacion', 'label': 'Apropiación'},
+    {'key': 'criterio_resolucion', 'label': 'Resolución'},
+    {'key': 'criterio_participacion', 'label': 'Participación'},
+    {'key': 'criterio_planteos', 'label': 'Dudas'},
+    {'key': 'criterio_entrega', 'label': 'Entrega'},
+    {'key': 'criterio_prolijidad', 'label': 'Prolijidad'},
+    {'key': 'criterio_aic', 'label': 'AIC'},
+  ];
+
+  String _labelNivelCualitativo(String v) {
+    switch (v) {
+      case 'S':
+        return 'Sobresaliente';
+      case 'MB':
+        return 'Muy Bueno';
+      case 'B':
+        return 'Bueno';
+      case 'R':
+        return 'Regular';
+      default:
+        return v;
+    }
+  }
+
+  Color _colorNivelCualitativo(String v) {
+    switch (v) {
+      case 'S':
+        return Colors.green.shade700;
+      case 'MB':
+        return Colors.blue.shade700;
+      case 'B':
+        return Colors.amber.shade800;
+      case 'R':
+        return Colors.red.shade700;
+      default:
+        return Colors.grey;
+    }
   }
 
   Widget _buildCriterioChip(String label, ColorScheme colorScheme) {

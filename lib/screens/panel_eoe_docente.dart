@@ -81,7 +81,13 @@ class _PanelEoeDocenteState extends State<PanelEoeDocente> {
   }
 
   Future<void> _agregarNota() async {
-    if (_selected == null || _notaCtrl.text.trim().isEmpty) return;
+    if (_selected == null) return;
+    if (_notaCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Escribí algo antes de agregarlo a la bitácora.')),
+      );
+      return;
+    }
     setState(() => _savingNota = true);
     try {
       await _service.agregarNotaBitacoraEoe(
@@ -102,7 +108,11 @@ class _PanelEoeDocenteState extends State<PanelEoeDocente> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al guardar la nota: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Error al guardar la nota: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 8),
+          ),
         );
       }
     } finally {
@@ -394,6 +404,8 @@ class _PanelEoeDocenteState extends State<PanelEoeDocente> {
                               controller: _notaCtrl,
                               minLines: 1,
                               maxLines: 3,
+                              textInputAction: TextInputAction.send,
+                              onSubmitted: _savingNota ? null : (_) => _agregarNota(),
                               decoration: const InputDecoration(
                                 hintText: 'Registrar evolución, pauta o incidencia...',
                                 border: OutlineInputBorder(),
@@ -438,13 +450,29 @@ class _PanelEoeDocenteState extends State<PanelEoeDocente> {
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Text(
-                                          '${item['autor_nombre'] ?? 'Autor'} · ${item['autor_rol'] ?? ''}',
-                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey),
+                                        Expanded(
+                                          child: Text(
+                                            '${item['autor_nombre'] ?? 'Autor'} · ${item['autor_rol'] ?? ''}',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey),
+                                          ),
                                         ),
-                                        Text(
-                                          (item['fecha'] ?? '').toString(),
-                                          style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: colorScheme.primaryContainer.withAlpha(60),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.event_rounded, size: 12, color: colorScheme.primary),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                _formatearFecha(item['fecha']),
+                                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -460,6 +488,12 @@ class _PanelEoeDocenteState extends State<PanelEoeDocente> {
         ],
       ),
     );
+  }
+
+  String _formatearFecha(dynamic fecha) {
+    final d = DateTime.tryParse((fecha ?? '').toString());
+    if (d == null) return (fecha ?? '').toString();
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
   }
 
   String _labelCampo(String k) {
