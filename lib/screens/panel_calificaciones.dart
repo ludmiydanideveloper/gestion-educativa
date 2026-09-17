@@ -286,6 +286,12 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
         alumnoId: alumnoId,
         notaNumerica: nuevaNota,
       );
+      // Sincronizar el controlador de texto con el valor guardado: si no se hace,
+      // el botón "Guardar" (que lee de los controladores) encuentra el texto
+      // vacío de la celda de Tarea/Actividad y la vuelve a guardar como null,
+      // borrando lo que se acaba de marcar desde el menú Sí/No/Regular.
+      final key = '${alumnoId}_$actividadId';
+      _controllers[key]?.text = nuevaNota != null ? nuevaNota.toStringAsFixed(1) : '';
     } catch (e) {
       _mostrarError('Error al guardar en la base de datos: $e');
       // Revertir localmente
@@ -305,6 +311,12 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
     try {
       for (final alumno in _alumnos) {
         for (final actividad in _actividades) {
+          // Las celdas de Tarea/Actividad en Clase se marcan con el menú
+          // Sí/No/Regular y se guardan al toque: no pasan por un controlador
+          // de texto, así que este botón no debe tocarlas.
+          final rawTitulo = actividad['titulo'].toString();
+          if (rawTitulo.startsWith('[TAREA]') || rawTitulo.startsWith('[CLASE]')) continue;
+
           final actId = actividad['id'] as String;
           final key = '${alumno.id}_$actId';
           final controller = _controllers[key];
