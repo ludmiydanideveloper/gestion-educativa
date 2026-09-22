@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/supabase_service.dart';
 import '../services/print_helper.dart';
 
@@ -233,9 +235,11 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
   
   List<Map<String, dynamic>> _asistencia = [];
   List<Map<String, dynamic>> _conducta = [];
-  final List<Map<String, String>> _certificados = [
-    {'fecha': '05/07/2026', 'titulo': 'Certificado Odontológico', 'estado': 'Presentado'},
-  ];
+  // Trayectoria real (acad_trayectoria_alumno / acad_materias_adeudadas):
+  // la misma fuente que usa el PDF Analítico oficial en el panel de admin.
+  List<Map<String, dynamic>> _trayectoria = [];
+  List<Map<String, dynamic>> _materiasAdeudadas = [];
+  bool _subiendoCertificado = false;
 
   void _editarAdecuacionDialog(Map<String, dynamic> al) {
     final formKey = GlobalKey<FormState>();
@@ -339,114 +343,55 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
     );
   }
 
-  void _subirCertificadoDialog(ColorScheme colorScheme) {
-    final titleCtrl = TextEditingController();
-    final fechaCtrl = TextEditingController(text: '10/07/2026');
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: const Row(
-                children: [
-                  Icon(Icons.upload_file_rounded, color: Colors.blue),
-                  SizedBox(width: 12),
-                  Text('Subir Certificado'),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Suba un certificado médico o justificativo para avalar las inasistencias del alumno.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: titleCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Descripción / Título',
-                      border: OutlineInputBorder(),
-                      hintText: 'Ej: Certificado Médico Gripe',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: fechaCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Fecha de Inasistencia',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue.shade50,
-                      foregroundColor: Colors.blue.shade800,
-                    ),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Archivo PDF / Imagen seleccionado correctamente.')),
-                      );
-                    },
-                    icon: const Icon(Icons.attach_file_rounded),
-                    label: const Text('Adjuntar archivo (PDF/Imagen)'),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade800,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () {
-                    if (titleCtrl.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Ingrese una descripción')),
-                      );
-                      return;
-                    }
-                    Navigator.of(context).pop();
-                    setState(() {
-                      _certificados.add({
-                        'fecha': fechaCtrl.text.trim(),
-                        'titulo': titleCtrl.text.trim(),
-                        'estado': 'Presentado',
-                      });
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: [
-                            const Icon(Icons.send_rounded, color: Colors.white),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Text('¡Certificado médico subido! Se ha enviado una notificación automática a los docentes de las materias y a la familia del alumno.'),
-                            ),
-                          ],
-                        ),
-                        backgroundColor: Colors.green.shade800,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    );
-                  },
-                  child: const Text('Subir y Notificar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+  /// Sube el certificado/justificativo para una inasistencia puntual
+  /// (asistencia_detalle_id) y la marca JUSTIFICADO.
+  Future<void> _subirCertificado(Map<String, dynamic> item) async {
+    final res = await FilePicker.platform.pickFiles(
+      withData: true,
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
     );
+    if (res == null || res.files.isEmpty || res.files.first.bytes == null) return;
+    final f = res.files.first;
+    setState(() => _subiendoCertificado = true);
+    try {
+      await _service.subirCertificadoAusencia(
+        asistenciaDetalleId: item['asistencia_detalle_id'].toString(),
+        bytes: f.bytes!,
+        fileName: f.name,
+      );
+      setState(() {
+        item['estado_justificacion'] = 'JUSTIFICADO';
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Certificado subido y ausencia justificada.'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al subir certificado: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _subiendoCertificado = false);
+    }
+  }
+
+  Future<void> _verCertificado(Map<String, dynamic> item) async {
+    final path = item['url_certificado']?.toString();
+    if (path == null || path.isEmpty) return;
+    try {
+      final url = await _service.urlFirmadaStorage('certificados', path);
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al abrir certificado: $e')),
+        );
+      }
+    }
   }
 
   Widget _buildAdecuacionCard(Map<String, dynamic> al, ColorScheme colorScheme) {
@@ -520,20 +465,30 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
 
   Future<void> _cargarHistorial() async {
     try {
+      final alumnoId = widget.alumno['id'] as String;
       final results = await Future.wait([
-        _service.obtenerAsistenciaAlumno(widget.alumno['id'] as String),
-        _service.obtenerCalificacionesAlumno(widget.alumno['id'] as String), // Notas
+        _service.obtenerAsistenciaAlumno(alumnoId),
+        Supabase.instance.client
+            .from('aca_conducta')
+            .select('*, acad_materias (nombre_asignatura)')
+            .eq('alumno_id', alumnoId),
+        Supabase.instance.client
+            .from('acad_trayectoria_alumno')
+            .select('*')
+            .eq('alumno_id', alumnoId)
+            .order('anio_lectivo'),
+        Supabase.instance.client
+            .from('acad_materias_adeudadas')
+            .select('*')
+            .eq('alumno_id', alumnoId)
+            .order('anio_origen'),
       ]);
-      
-      // Obtener incidencias de conducta
-      final response = await Supabase.instance.client
-          .from('aca_conducta')
-          .select('*')
-          .eq('alumno_id', widget.alumno['id'] as String);
-      
+
       setState(() {
         _asistencia = List<Map<String, dynamic>>.from(results[0]);
-        _conducta = List<Map<String, dynamic>>.from(response);
+        _conducta = List<Map<String, dynamic>>.from(results[1]);
+        _trayectoria = List<Map<String, dynamic>>.from(results[2]);
+        _materiasAdeudadas = List<Map<String, dynamic>>.from(results[3]);
         _loading = false;
       });
     } catch (e) {
@@ -542,11 +497,42 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
     }
   }
 
+  Future<void> _recargarTrayectoria() async {
+    final alumnoId = widget.alumno['id'] as String;
+    final results = await Future.wait([
+      Supabase.instance.client
+          .from('acad_trayectoria_alumno')
+          .select('*')
+          .eq('alumno_id', alumnoId)
+          .order('anio_lectivo'),
+      Supabase.instance.client
+          .from('acad_materias_adeudadas')
+          .select('*')
+          .eq('alumno_id', alumnoId)
+          .order('anio_origen'),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _trayectoria = List<Map<String, dynamic>>.from(results[0]);
+      _materiasAdeudadas = List<Map<String, dynamic>>.from(results[1]);
+    });
+  }
+
+  /// % de ciclos lectivos aprobados sobre el total cargado en la trayectoria
+  /// real (acad_trayectoria_alumno). Sin datos cargados, no hay progreso que
+  /// mostrar — nada de inventar un número.
+  double? get _progresoAcademico {
+    if (_trayectoria.isEmpty) return null;
+    final aprobados = _trayectoria.where((t) => (t['condicion'] ?? '') == 'APROBADO').length;
+    return aprobados / _trayectoria.length;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final totalFaltas = _asistencia.fold<double>(
         0.0, (sum, item) => sum + (item['valor_inasistencia'] as num? ?? 0.0).toDouble());
+    final progreso = _progresoAcademico;
 
     return Container(
       decoration: const BoxDecoration(
@@ -558,17 +544,32 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
+          SizedBox(
+            height: 32,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Positioned(
+                  right: 0,
+                  child: IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    tooltip: 'Cerrar',
+                    onPressed: () => Navigator.of(context).pop(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           // Nombre y datos
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -605,17 +606,21 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
                   }).join('');
 
                   final condRows = _conducta.map((item) {
-                    return '<tr><td>${item['fecha_suceso'] ?? "-"}</td><td>${item['tipo_incidencia'] ?? "-"}</td><td>${item['descripcion'] ?? "-"}</td></tr>';
+                    return '<tr><td>${item['fecha'] ?? "-"}</td><td>${item['tipo_incidencia'] ?? "-"}</td><td>${item['descripcion'] ?? "-"}</td></tr>';
                   }).join('');
 
-                  final certRows = _certificados.map((item) {
-                    return '<tr><td>${item['fecha']}</td><td>${item['titulo']}</td><td>${item['estado']}</td></tr>';
+                  final certRows = _asistencia
+                      .where((item) => (item['estado_justificacion'] ?? 'NINGUNO') != 'NINGUNO')
+                      .map((item) {
+                    final cab = item['asistencia_cabecera'] as Map<String, dynamic>?;
+                    final fecha = cab?['fecha'] as String? ?? 'Fecha';
+                    return '<tr><td>$fecha</td><td>${item['tipo'] ?? "-"}</td><td>${item['estado_justificacion'] ?? "-"}</td></tr>';
                   }).join('');
 
                   final htmlContent = '''
                     <h2>Ficha de Trayectoria Educativa: ${widget.alumno['nombre']}</h2>
                     <p><strong>DNI:</strong> ${widget.alumno['dni']} | <strong>Género:</strong> ${widget.alumno['genero']}</p>
-                    <p><strong>Progreso Académico:</strong> 82%</p>
+                    <p><strong>Progreso Académico:</strong> ${progreso != null ? '${(progreso * 100).toStringAsFixed(0)}%' : 'Sin datos de trayectoria cargados'}</p>
                     <p><strong>Total Inasistencias:</strong> ${totalFaltas.toStringAsFixed(2)} faltas</p>
                     
                     <h3 style="margin-top:24px;">Historial de Inasistencias</h3>
@@ -658,7 +663,8 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
             ],
           ),
           const SizedBox(height: 12),
-          // Barra de Progreso del Proceso Académico
+          // Barra de Progreso del Proceso Académico — real, en base a
+          // acad_trayectoria_alumno (ciclos aprobados / ciclos cargados).
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -667,14 +673,14 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey),
               ),
               Text(
-                '82%',
+                progreso != null ? '${(progreso * 100).toStringAsFixed(0)}%' : 'Sin datos',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: colorScheme.primary),
               ),
             ],
           ),
           const SizedBox(height: 4),
           LinearProgressIndicator(
-            value: 0.82,
+            value: progreso ?? 0,
             backgroundColor: Colors.grey.shade200,
             color: colorScheme.primary,
             minHeight: 6,
@@ -752,9 +758,11 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
                                               final fecha = cab?['fecha'] as String? ?? 'Fecha';
                                               final tipo = item['tipo'] as String? ?? 'PRESENTE';
                                               final valor = item['valor_inasistencia'] as num? ?? 0.0;
-                                              
+                                              final materia = (cab?['acad_materias'] as Map?)?['nombre_asignatura']
+                                                  as String?;
+
                                               if (tipo == 'PRESENTE') return const SizedBox();
- 
+
                                               return Card(
                                                 elevation: 0,
                                                 margin: const EdgeInsets.only(bottom: 6),
@@ -766,7 +774,9 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
                                                 child: ListTile(
                                                   leading: const Icon(Icons.cancel_rounded, color: Colors.red),
                                                   title: Text(tipo),
-                                                  subtitle: Text('Fecha: $fecha'),
+                                                  subtitle: Text(materia != null && materia.isNotEmpty
+                                                      ? 'Fecha: $fecha · $materia'
+                                                      : 'Fecha: $fecha'),
                                                   trailing: Text('+$valor',
                                                       style: const TextStyle(
                                                           color: Colors.red, fontWeight: FontWeight.bold)),
@@ -784,62 +794,10 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
                               // Pestaña Conducta Diaria
                               _buildConductaDiariaTab(colorScheme),
 
-                              // Pestaña Certificados Médicos
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      const Text('Certificados y Justificativos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                                      ElevatedButton.icon(
-                                        onPressed: () => _subirCertificadoDialog(colorScheme),
-                                        icon: const Icon(Icons.upload_file_rounded),
-                                        label: const Text('Subir Certificado'),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: colorScheme.primary,
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Expanded(
-                                    child: _certificados.isEmpty
-                                        ? const Center(child: Text('No se registraron certificados médicos para este alumno.', style: TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic)))
-                                        : ListView.builder(
-                                            physics: const BouncingScrollPhysics(),
-                                            itemCount: _certificados.length,
-                                            itemBuilder: (context, index) {
-                                              final cert = _certificados[index];
-                                              return Card(
-                                                elevation: 0,
-                                                margin: const EdgeInsets.only(bottom: 8),
-                                                color: Colors.blue.shade50.withAlpha(127),
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.circular(12),
-                                                  side: BorderSide(color: Colors.blue.shade100),
-                                                ),
-                                                child: ListTile(
-                                                  leading: const Icon(Icons.verified_user_rounded, color: Colors.blue, size: 24),
-                                                  title: Text(cert['titulo'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                                                  subtitle: Text('Fecha de Falta: ${cert['fecha']}'),
-                                                  trailing: Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(6)),
-                                                    child: Text(
-                                                      cert['estado'] ?? '',
-                                                      style: TextStyle(color: Colors.green.shade800, fontWeight: FontWeight.bold, fontSize: 10),
-                                                    ),
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                  ),
-                                ],
-                              ),
+                              // Pestaña Certificados Médicos: uno por inasistencia real
+                              // (asistencia_detalle.url_certificado / estado_justificacion),
+                              // no una lista aparte inventada.
+                              _buildCertificadosTab(colorScheme),
                             ],
                           ),
                         ),
@@ -852,23 +810,164 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
     );
   }
 
-  Widget _buildBoletinTrayectoriaTab(ColorScheme colorScheme) {
-    // Datos ficticios / Modelo Oficial para toda la trayectoria
-    final List<Map<String, dynamic>> trayectoriaFicticia = [
-      {'anio_lectivo': '2023 - 1° Año Sec.', 'curso_nombre': '1° A - Turno Mañana', 'condicion': 'APROBADO', 'promedio': '8.40'},
-      {'anio_lectivo': '2024 - 2° Año Sec.', 'curso_nombre': '2° A - Turno Mañana', 'condicion': 'APROBADO', 'promedio': '7.85'},
-      {'anio_lectivo': '2025 - 3° Año Sec.', 'curso_nombre': '3° A - Turno Mañana', 'condicion': 'EN_CURSO', 'promedio': '8.20'},
-    ];
+  /// Alta de un ciclo lectivo cursado (acad_trayectoria_alumno) — misma tabla
+  /// real que gestiona el panel de administración para el PDF Analítico.
+  Future<void> _agregarAnioTrayectoria() async {
+    final anioCtrl = TextEditingController(text: (DateTime.now().year - 1).toString());
+    final cursoCtrl = TextEditingController();
+    final promCtrl = TextEditingController();
+    String cond = 'APROBADO';
 
-    final List<Map<String, dynamic>> materiasFicticias = [
-      {'materia': 'Matemática I, II y III', 'anio': '1° a 3° Año', 'nota': '8.20', 'estado': 'APROBADA'},
-      {'materia': 'Prácticas del Lenguaje I, II y III', 'anio': '1° a 3° Año', 'nota': '8.80', 'estado': 'APROBADA'},
-      {'materia': 'Ciencias Naturales / Biología', 'anio': '1° y 2° Año', 'nota': '8.50', 'estado': 'APROBADA'},
-      {'materia': 'Historia / Construcción Ciudadana', 'anio': '1° a 3° Año', 'nota': '9.00', 'estado': 'APROBADA'},
-      {'materia': 'Geografía General', 'anio': '2° y 3° Año', 'nota': '7.75', 'estado': 'APROBADA'},
-      {'materia': 'Inglés Técnico I y II', 'anio': '1° a 3° Año', 'nota': '8.10', 'estado': 'APROBADA'},
-      {'materia': 'Física I', 'anio': '3° Año', 'nota': '6.50', 'estado': 'COMISIÓN RITE'},
-    ];
+    await showDialog(
+      context: context,
+      builder: (dCtx) => StatefulBuilder(
+        builder: (dCtx, setD) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Registrar Año Cursado'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: anioCtrl, decoration: const InputDecoration(labelText: 'Año lectivo (ej. 2024)'), keyboardType: TextInputType.number),
+              const SizedBox(height: 10),
+              TextField(controller: cursoCtrl, decoration: const InputDecoration(labelText: 'Curso / división (ej. 1° A)')),
+              const SizedBox(height: 10),
+              TextField(controller: promCtrl, decoration: const InputDecoration(labelText: 'Promedio general (ej. 8.50)'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                value: cond,
+                decoration: const InputDecoration(labelText: 'Condición final'),
+                items: const [
+                  DropdownMenuItem(value: 'APROBADO', child: Text('Aprobado')),
+                  DropdownMenuItem(value: 'EN_CURSO', child: Text('En curso')),
+                  DropdownMenuItem(value: 'ADEUDA_MATERIAS', child: Text('Adeuda materias')),
+                ],
+                onChanged: (v) => setD(() => cond = v ?? cond),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: () async {
+                if (cursoCtrl.text.trim().isEmpty) return;
+                try {
+                  await Supabase.instance.client.from('acad_trayectoria_alumno').insert({
+                    'alumno_id': widget.alumno['id'],
+                    'anio_lectivo': int.tryParse(anioCtrl.text) ?? DateTime.now().year,
+                    'curso_nombre': cursoCtrl.text.trim(),
+                    'promedio': double.tryParse(promCtrl.text.replaceAll(',', '.')),
+                    'condicion': cond,
+                  });
+                  if (dCtx.mounted) Navigator.pop(dCtx);
+                  await _recargarTrayectoria();
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                  }
+                }
+              },
+              child: const Text('Guardar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _eliminarTrayectoria(Map<String, dynamic> t) async {
+    await Supabase.instance.client.from('acad_trayectoria_alumno').delete().eq('id', t['id']);
+    await _recargarTrayectoria();
+  }
+
+  /// Alta de una materia pendiente para Comisión RITE (acad_materias_adeudadas).
+  Future<void> _agregarMateriaAdeudada() async {
+    final matCtrl = TextEditingController();
+    final anioCtrl = TextEditingController(text: (DateTime.now().year - 1).toString());
+    // Códigos reales del CHECK de la tabla — ver SupabaseService.labelCondicionAdeudada.
+    String cond = SupabaseService.kCondicionIntensifica;
+
+    await showDialog(
+      context: context,
+      builder: (dCtx) => StatefulBuilder(
+        builder: (dCtx, setD) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Registrar Materia para Comisión RITE'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: matCtrl, decoration: const InputDecoration(labelText: 'Nombre de la materia')),
+              const SizedBox(height: 10),
+              TextField(controller: anioCtrl, decoration: const InputDecoration(labelText: 'Año en que se cursó')),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                value: cond,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Condición RITE'),
+                items: [
+                  DropdownMenuItem(
+                      value: SupabaseService.kCondicionIntensifica,
+                      child: Text(SupabaseService.labelCondicionAdeudada(SupabaseService.kCondicionIntensifica))),
+                  DropdownMenuItem(
+                      value: SupabaseService.kCondicionRecursa,
+                      child: Text(SupabaseService.labelCondicionAdeudada(SupabaseService.kCondicionRecursa))),
+                  DropdownMenuItem(
+                      value: SupabaseService.kCondicionPreviaLibre,
+                      child: Text(SupabaseService.labelCondicionAdeudada(SupabaseService.kCondicionPreviaLibre))),
+                ],
+                onChanged: (v) => setD(() => cond = v ?? cond),
+              ),
+              const SizedBox(height: 6),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Para vincularla a una materia real del plan de estudios (y que el '
+                  'docente titular pueda cargar coloquios o notas), usá el módulo RITE.',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: () async {
+                if (matCtrl.text.trim().isEmpty) return;
+                try {
+                  await _service.crearMateriaAdeudada(
+                    alumnoId: widget.alumno['id'] as String,
+                    materiaOriginalId: '',
+                    nombreMateria: matCtrl.text.trim(),
+                    anioOrigen: int.tryParse(anioCtrl.text) ?? DateTime.now().year,
+                    condicion: cond,
+                  );
+                  if (dCtx.mounted) Navigator.pop(dCtx);
+                  await _recargarTrayectoria();
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                  }
+                }
+              },
+              child: const Text('Registrar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _eliminarMateriaAdeudada(Map<String, dynamic> m) async {
+    await _service.eliminarMateriaAdeudadaReal(m['adeudada_id'].toString());
+    await _recargarTrayectoria();
+  }
+
+  Widget _buildBoletinTrayectoriaTab(ColorScheme colorScheme) {
+    final promedios = _trayectoria
+        .map((t) => double.tryParse(t['promedio']?.toString() ?? ''))
+        .whereType<double>()
+        .toList();
+    final promedioGeneral = promedios.isEmpty ? null : promedios.reduce((a, b) => a + b) / promedios.length;
+    final aprobadas = _trayectoria.where((t) => (t['condicion'] ?? '') == 'APROBADO').length;
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -902,7 +1001,7 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Trayectoria completa consolidada (RITE Provincial)',
+                            'Trayectoria real cargada por Dirección (RITE Provincial)',
                             style: TextStyle(color: colorScheme.primary, fontSize: 12, fontWeight: FontWeight.w600),
                           ),
                         ],
@@ -915,19 +1014,21 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
                         elevation: 2,
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       ),
-                      onPressed: () {
-                        PrintHelper.imprimirTrayectoriaYAnalitico(
-                          studentName: widget.alumno['nombre'] ?? 'ALUMNO',
-                          dni: widget.alumno['dni']?.toString() ?? 'Sin DNI',
-                          cursoActual: '3° A Secundaria',
-                          trayectoria: trayectoriaFicticia,
-                          materiasAdeudadas: [
-                            {'nombre_materia': 'Física I', 'anio_origen': '3° Año', 'condicion': 'COMISIÓN RITE', 'estado': 'PENDIENTE'}
-                          ],
-                        );
-                      },
+                      onPressed: _trayectoria.isEmpty
+                          ? null
+                          : () {
+                              PrintHelper.imprimirTrayectoriaYAnalitico(
+                                studentName: widget.alumno['nombre'] ?? 'ALUMNO',
+                                dni: widget.alumno['dni']?.toString() ?? 'Sin DNI',
+                                cursoActual: _trayectoria.isNotEmpty
+                                    ? (_trayectoria.last['curso_nombre'] ?? '').toString()
+                                    : '',
+                                trayectoria: _trayectoria,
+                                materiasAdeudadas: _materiasAdeudadas,
+                              );
+                            },
                       icon: const Icon(Icons.print_rounded, size: 18),
-                      label: const Text('Imprimir PDF Modelo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      label: const Text('Imprimir PDF Analítico', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                     ),
                   ],
                 ),
@@ -936,112 +1037,179 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
           ),
           const SizedBox(height: 16),
 
-          // Cards de Resumen Histórico
+          // Cards de Resumen Histórico — sólo con lo que hay datos reales cargados.
           Row(
             children: [
-              Expanded(child: _buildResumenCard('Promedio General', '8.15', Icons.star_rounded, Colors.amber.shade800)),
+              Expanded(
+                child: _buildResumenCard('Promedio General', promedioGeneral?.toStringAsFixed(2) ?? 'Sin datos',
+                    Icons.star_rounded, Colors.amber.shade800),
+              ),
               const SizedBox(width: 10),
-              Expanded(child: _buildResumenCard('Acreditadas', '28 / 29', Icons.check_circle_rounded, Colors.green.shade800)),
+              Expanded(
+                child: _buildResumenCard(
+                    'Ciclos Aprobados',
+                    _trayectoria.isEmpty ? 'Sin datos' : '$aprobadas / ${_trayectoria.length}',
+                    Icons.check_circle_rounded,
+                    Colors.green.shade800),
+              ),
               const SizedBox(width: 10),
-              Expanded(child: _buildResumenCard('Promoción', 'DIRECTA', Icons.trending_up_rounded, Colors.blue.shade800)),
+              Expanded(
+                child: _buildResumenCard('Materias Pendientes', '${_materiasAdeudadas.length}',
+                    Icons.pending_actions_rounded, Colors.blue.shade800),
+              ),
             ],
           ),
           const SizedBox(height: 18),
 
-          const Text('Historial de Promoción por Ciclo Lectivo:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Historial de Promoción por Ciclo Lectivo:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              TextButton.icon(
+                onPressed: _agregarAnioTrayectoria,
+                icon: const Icon(Icons.add_circle_outline_rounded, size: 16),
+                label: const Text('Agregar año', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: trayectoriaFicticia.length,
-            itemBuilder: (context, index) {
-              final t = trayectoriaFicticia[index];
-              return Card(
-                elevation: 0,
-                margin: const EdgeInsets.only(bottom: 6),
-                color: Colors.grey.shade50,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.grey.shade300)),
-                child: ListTile(
-                  dense: true,
-                  leading: CircleAvatar(
-                    radius: 16,
-                    backgroundColor: colorScheme.primary.withAlpha(25),
-                    child: Text('${index + 1}', style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 12)),
-                  ),
-                  title: Text(t['anio_lectivo']!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  subtitle: Text(t['curso_nombre']!, style: const TextStyle(fontSize: 11)),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('Prom: ${t['promedio']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      const SizedBox(width: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: t['condicion'] == 'APROBADO' ? Colors.green.shade100 : Colors.blue.shade100,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          t['condicion']!,
-                          style: TextStyle(
-                            color: t['condicion'] == 'APROBADO' ? Colors.green.shade800 : Colors.blue.shade800,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 10,
+          if (_trayectoria.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              width: double.infinity,
+              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
+              child: const Text('Todavía no se cargó el historial de ciclos lectivos de este alumno.',
+                  style: TextStyle(color: Colors.black54, fontSize: 12)),
+            )
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _trayectoria.length,
+              itemBuilder: (context, index) {
+                final t = _trayectoria[index];
+                final condicion = (t['condicion'] ?? 'APROBADO').toString();
+                return Card(
+                  elevation: 0,
+                  margin: const EdgeInsets.only(bottom: 6),
+                  color: Colors.grey.shade50,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.grey.shade300)),
+                  child: ListTile(
+                    dense: true,
+                    leading: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: colorScheme.primary.withAlpha(25),
+                      child: Text('${t['anio_lectivo'] ?? '-'}',
+                          style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 11)),
+                    ),
+                    title: Text(t['curso_nombre']?.toString() ?? '-', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(t['promedio'] != null ? 'Prom: ${t['promedio']}' : 'Sin promedio',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        const SizedBox(width: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: condicion == 'APROBADO' ? Colors.green.shade100 : Colors.blue.shade100,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            condicion,
+                            style: TextStyle(
+                              color: condicion == 'APROBADO' ? Colors.green.shade800 : Colors.blue.shade800,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 10,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 18),
+                          onPressed: () => _eliminarTrayectoria(t),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
           const SizedBox(height: 18),
 
-          const Text('Desempeño Curricular Acumulado por Materias:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Materias Adeudadas / Comisión RITE:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              TextButton.icon(
+                onPressed: _agregarMateriaAdeudada,
+                icon: const Icon(Icons.add_task_rounded, size: 16),
+                label: const Text('Agregar materia', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  headingRowHeight: 40,
-                  dataRowMinHeight: 36,
-                  dataRowMaxHeight: 36,
-                  headingRowColor: WidgetStateProperty.all(colorScheme.surfaceVariant.withAlpha(80)),
-                  columns: const [
-                    DataColumn(label: Text('Asignatura / Área', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                    DataColumn(label: Text('Ciclos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                    DataColumn(label: Text('Prom. RITE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                    DataColumn(label: Text('Estado', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                  ],
-                  rows: materiasFicticias.map((m) {
-                    final aprobada = m['estado'] == 'APROBADA';
-                    return DataRow(cells: [
-                      DataCell(Text(m['materia']!, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
-                      DataCell(Text(m['anio']!, style: const TextStyle(fontSize: 11, color: Colors.grey))),
-                      DataCell(Text(m['nota']!, style: TextStyle(fontWeight: FontWeight.bold, color: aprobada ? Colors.green.shade800 : Colors.orange.shade900))),
-                      DataCell(
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: aprobada ? Colors.green.shade50 : Colors.orange.shade50,
-                            borderRadius: BorderRadius.circular(4),
+          if (_materiasAdeudadas.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              width: double.infinity,
+              decoration: BoxDecoration(
+                  color: Colors.green.withAlpha(15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green.withAlpha(60))),
+              child: const Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Colors.green),
+                  SizedBox(width: 10),
+                  Expanded(child: Text('El alumno no registra materias adeudadas.', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12))),
+                ],
+              ),
+            )
+          else
+            Container(
+              decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    headingRowHeight: 40,
+                    dataRowMinHeight: 36,
+                    dataRowMaxHeight: 36,
+                    headingRowColor: WidgetStateProperty.all(colorScheme.surfaceVariant.withAlpha(80)),
+                    columns: const [
+                      DataColumn(label: Text('Materia', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                      DataColumn(label: Text('Año origen', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                      DataColumn(label: Text('Condición', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                      DataColumn(label: Text('Estado', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                      DataColumn(label: Text('')),
+                    ],
+                    rows: _materiasAdeudadas.map((m) {
+                      final aprobada = (m['estado'] ?? '') == 'APROBADA';
+                      return DataRow(cells: [
+                        DataCell(Text(m['nombre_materia']?.toString() ?? '-', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
+                        DataCell(Text('${m['anio_origen'] ?? '-'}', style: const TextStyle(fontSize: 11, color: Colors.grey))),
+                        DataCell(Text(SupabaseService.labelCondicionAdeudada(m['condicion']?.toString()), style: const TextStyle(fontSize: 12))),
+                        DataCell(
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: aprobada ? Colors.green.shade50 : Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(m['estado']?.toString() ?? 'PENDIENTE',
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: aprobada ? Colors.green.shade800 : Colors.orange.shade900)),
                           ),
-                          child: Text(m['estado']!, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: aprobada ? Colors.green.shade800 : Colors.orange.shade900)),
                         ),
-                      ),
-                    ]);
-                  }).toList(),
+                        DataCell(IconButton(
+                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 18),
+                          onPressed: () => _eliminarMateriaAdeudada(m),
+                        )),
+                      ]);
+                    }).toList(),
+                  ),
                 ),
               ),
             ),
-          ),
           const SizedBox(height: 24),
         ],
       ),
@@ -1092,7 +1260,7 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
         final tipo = item['tipo_incidencia'] as String? ?? 'General';
         final sev = item['severidad'] as String? ?? 'Leve';
         final desc = item['descripcion'] as String? ?? '';
-        final fecha = (item['created_at'] as String?)?.substring(0, 10) ?? 'Reciente';
+        final fecha = (item['fecha'] as String?)?.substring(0, 10) ?? 'Sin fecha';
 
         Color colorSev = Colors.blue;
         if (sev == 'Grave') colorSev = Colors.orange;
@@ -1163,7 +1331,8 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
         final item = listDiaria[index];
         final tipo = item['tipo_incidencia'] as String? ?? 'Bien';
         final desc = item['descripcion'] as String? ?? '';
-        final fecha = (item['created_at'] as String?)?.substring(0, 10) ?? 'Reciente';
+        final fecha = (item['fecha'] as String?)?.substring(0, 10) ?? 'Sin fecha';
+        final materia = (item['acad_materias'] as Map?)?['nombre_asignatura'] as String?;
 
         Color badgeColor = Colors.green;
         if (tipo.toLowerCase() == 'mal') badgeColor = Colors.red;
@@ -1206,6 +1375,114 @@ class _FichaTrayectoriaSheetState extends State<_FichaTrayectoriaSheet> {
                 ),
                 const SizedBox(height: 6),
                 Text(desc, style: const TextStyle(fontSize: 13)),
+                if (materia != null && materia.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(Icons.menu_book_rounded, size: 13, color: colorScheme.primary),
+                      const SizedBox(width: 4),
+                      Text(materia,
+                          style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w600, color: colorScheme.primary)),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCertificadosTab(ColorScheme colorScheme) {
+    final ausencias = _asistencia.where((item) => (item['tipo'] ?? 'PRESENTE') != 'PRESENTE').toList();
+
+    if (ausencias.isEmpty) {
+      return const Center(
+        child: Text('Sin inasistencias registradas para este alumno.',
+            style: TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic)),
+      );
+    }
+
+    Color colorEstado(String estado) {
+      switch (estado) {
+        case 'JUSTIFICADO':
+          return Colors.green;
+        case 'PENDIENTE_CERTIFICADO_MEDICO':
+          return Colors.orange;
+        case 'RECHAZADO':
+          return Colors.red;
+        default:
+          return Colors.grey;
+      }
+    }
+
+    String labelEstado(String estado) {
+      switch (estado) {
+        case 'JUSTIFICADO':
+          return 'Justificado';
+        case 'PENDIENTE_CERTIFICADO_MEDICO':
+          return 'Pendiente';
+        case 'RECHAZADO':
+          return 'Rechazado';
+        default:
+          return 'Sin certificado';
+      }
+    }
+
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      itemCount: ausencias.length,
+      itemBuilder: (context, index) {
+        final item = ausencias[index];
+        final cab = item['asistencia_cabecera'] as Map<String, dynamic>?;
+        final fecha = cab?['fecha'] as String? ?? 'Fecha';
+        final tipo = item['tipo'] as String? ?? 'AUSENTE';
+        final materia = (cab?['acad_materias'] as Map?)?['nombre_asignatura'] as String?;
+        final estado = (item['estado_justificacion'] ?? 'NINGUNO') as String;
+        final tieneCertificado = (item['url_certificado'] ?? '').toString().isNotEmpty;
+        final color = colorEstado(estado);
+
+        return Card(
+          elevation: 0,
+          margin: const EdgeInsets.only(bottom: 8),
+          color: color.withAlpha(15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: color.withAlpha(80)),
+          ),
+          child: ListTile(
+            leading: Icon(Icons.verified_user_rounded, color: color, size: 24),
+            title: Text(
+              materia != null && materia.isNotEmpty ? '$tipo · $materia' : tipo,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+            subtitle: Text('Fecha: $fecha'),
+            trailing: Wrap(
+              spacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: color.withAlpha(30), borderRadius: BorderRadius.circular(6)),
+                  child: Text(
+                    labelEstado(estado),
+                    style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 10),
+                  ),
+                ),
+                if (tieneCertificado)
+                  TextButton.icon(
+                    onPressed: () => _verCertificado(item),
+                    icon: const Icon(Icons.visibility_rounded, size: 16),
+                    label: const Text('Ver', style: TextStyle(fontSize: 12)),
+                  )
+                else
+                  TextButton.icon(
+                    onPressed: _subiendoCertificado ? null : () => _subirCertificado(item),
+                    icon: const Icon(Icons.upload_file_rounded, size: 16),
+                    label: const Text('Subir', style: TextStyle(fontSize: 12)),
+                  ),
               ],
             ),
           ),

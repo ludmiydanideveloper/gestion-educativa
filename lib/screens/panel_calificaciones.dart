@@ -217,6 +217,18 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
       _alumnos = await _supabaseService.fetchAlumnos();
     }
 
+    // Sumar alumnos que están RECURSANDO esta materia (RITE): no están
+    // inscriptos en este curso, pero deben poder recibir notas normales.
+    try {
+      final recursantes = await _supabaseService.obtenerRecursantesMateria(_selectedMateriaId!);
+      final idsExistentes = _alumnos.map((a) => a.id).toSet();
+      for (final r in recursantes) {
+        if (idsExistentes.add(r.id)) _alumnos.add(r);
+      }
+    } catch (e) {
+      debugPrint('Error al sumar recursantes: $e');
+    }
+
     // Obtener actividades de la materia
     _actividades = await _supabaseService.obtenerActividades(_selectedMateriaId!);
     

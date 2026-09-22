@@ -22,11 +22,13 @@ class _PanelConductaState extends State<PanelConducta> {
   List<Map<String, dynamic>> _incidenciasFiltradas = [];
   List<AlumnoAsistencia> _alumnos = [];
   List<Map<String, dynamic>> _cursos = [];
+  List<Map<String, dynamic>> _materias = [];
 
   // Filtros
   String _searchText = '';
   String _selectedSeverityFilter = 'TODOS'; // TODOS, Leve, Grave, Gravísima
   String? _filterCursoId;
+  String? _filterMateriaId;
   bool _mostrarConductaDiaria = false;
 
   @override
@@ -41,12 +43,14 @@ class _PanelConductaState extends State<PanelConducta> {
       final listIncidencias = await _supabaseService.obtenerTodasIncidencias();
       final listAlumnos = await _supabaseService.fetchAlumnos(cursoId: widget.cursoId);
       final listCursos = await _supabaseService.fetchCursos();
-      
+      final listMaterias = await _supabaseService.fetchMaterias();
+
       if (mounted) {
         setState(() {
           _incidencias = listIncidencias;
           _alumnos = listAlumnos;
           _cursos = listCursos;
+          _materias = listMaterias;
           _isLoading = false;
         });
         _filtrarIncidencias();
@@ -95,6 +99,9 @@ class _PanelConductaState extends State<PanelConducta> {
         final matchesCurso =
             _filterCursoId == null || _cursosDeIncidencia(item).contains(_filterCursoId);
 
+        final matchesMateria = _filterMateriaId == null ||
+            (item['materia_id'] ?? '').toString() == _filterMateriaId;
+
         final matchesSearch = nombreAlumno.contains(_searchText.toLowerCase()) ||
             cursoNombre.contains(_searchText.toLowerCase()) ||
             tipo.contains(_searchText.toLowerCase()) ||
@@ -103,7 +110,7 @@ class _PanelConductaState extends State<PanelConducta> {
         final matchesSeverity = _selectedSeverityFilter == 'TODOS' ||
             (item['severidad'] ?? '').toString().toUpperCase() == _selectedSeverityFilter.toUpperCase();
 
-        return matchesSearch && matchesSeverity && matchesCurso;
+        return matchesSearch && matchesSeverity && matchesCurso && matchesMateria;
       }).toList();
     });
   }
@@ -271,13 +278,16 @@ class _PanelConductaState extends State<PanelConducta> {
 
   void _abrirSeleccionConductaDiaria() {
     String? selectedCursoId;
-    String? selectedMateriaNombre;
+    String? selectedMateriaId;
 
     showDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            final materiasDelCurso =
+                _materias.where((m) => m['curso_id'] == selectedCursoId).toList();
+
             return AlertDialog(
               title: const Text('Registrar Conducta Diaria', style: TextStyle(fontWeight: FontWeight.bold)),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -296,23 +306,24 @@ class _PanelConductaState extends State<PanelConducta> {
                     onChanged: (val) {
                       setModalState(() {
                         selectedCursoId = val;
+                        selectedMateriaId = null;
                       });
                     },
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: selectedMateriaNombre,
+                    value: selectedMateriaId,
                     decoration: const InputDecoration(labelText: 'Materia / Asignatura', border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)))),
                     disabledHint: const Text('Seleccione primero un curso'),
-                    items: ['Historia Sagrada', 'Prácticas del Lenguaje', 'Ciencias Naturales', 'Educación Física', 'Construcción de la Ciudadanía', 'Matemática'].map((m) {
+                    items: materiasDelCurso.map((m) {
                       return DropdownMenuItem(
-                        value: m,
-                        child: Text(m),
+                        value: m['materia_id'] as String,
+                        child: Text((m['nombre_asignatura'] ?? 'Materia').toString()),
                       );
                     }).toList(),
                     onChanged: selectedCursoId == null
                         ? null
-                        : (val) => setModalState(() => selectedMateriaNombre = val),
+                        : (val) => setModalState(() => selectedMateriaId = val),
                   ),
                 ],
               ),
@@ -331,15 +342,19 @@ class _PanelConductaState extends State<PanelConducta> {
                   child: const Text('Ver Historial / Métricas'),
                 ),
                 ElevatedButton(
-                  onPressed: (selectedCursoId == null || selectedMateriaNombre == null)
+                  onPressed: (selectedCursoId == null || selectedMateriaId == null)
                       ? null
                       : () {
                           Navigator.of(context).pop();
+                          final materia = materiasDelCurso.firstWhere(
+                              (m) => m['materia_id'] == selectedMateriaId);
                           Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (context) => PanelConductaDiaria(
                                 cursoId: selectedCursoId!,
-                                nombreAsignatura: selectedMateriaNombre!,
+                                materiaId: selectedMateriaId,
+                                nombreAsignatura:
+                                    (materia['nombre_asignatura'] ?? '').toString(),
                               ),
                             ),
                           ).then((_) => _cargarDatos());
@@ -648,12 +663,49 @@ class _PanelConductaState extends State<PanelConducta> {
                         },
                       );
 
+                      // Sólo tiene sentido en Conducta Diaria: los registros de
+                      // Sanciones no quedan atados a una materia puntual.
+                      final selectorMateria = _mostrarConductaDiaria
+                          ? DropdownButtonFormField<String>(
+                              value: _filterMateriaId,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                labelText: 'Materia',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+                              ),
+                              items: [
+                                const DropdownMenuItem<String>(
+                                  value: null,
+                                  child: Text('Todas las materias'),
+                                ),
+                                ..._materias.map((m) {
+                                  return DropdownMenuItem<String>(
+                                    value: m['materia_id'] as String,
+                                    child: Text((m['nombre_asignatura'] ?? 'Materia').toString(),
+                                        overflow: TextOverflow.ellipsis),
+                                  );
+                                }),
+                              ],
+                              onChanged: (val) {
+                                setState(() {
+                                  _filterMateriaId = val;
+                                });
+                                _filtrarIncidencias();
+                              },
+                            )
+                          : null;
+
                       if (esMovil) {
                         return Column(
                           children: [
                             buscador,
                             const SizedBox(height: 10),
                             selectorCurso,
+                            if (selectorMateria != null) ...[
+                              const SizedBox(height: 10),
+                              selectorMateria,
+                            ],
                           ],
                         );
                       }
@@ -662,6 +714,10 @@ class _PanelConductaState extends State<PanelConducta> {
                           Expanded(flex: 2, child: buscador),
                           const SizedBox(width: 12),
                           Expanded(flex: 1, child: selectorCurso),
+                          if (selectorMateria != null) ...[
+                            const SizedBox(width: 12),
+                            Expanded(flex: 1, child: selectorMateria),
+                          ],
                         ],
                       );
                     }),

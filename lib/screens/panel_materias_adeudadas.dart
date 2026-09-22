@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../services/supabase_service.dart';
 import '../services/print_helper.dart';
+import '../widgets/dialogo_periodos_adeudada.dart';
 
 class PanelMateriasAdeudadas extends StatefulWidget {
   const PanelMateriasAdeudadas({super.key});
@@ -9,65 +11,74 @@ class PanelMateriasAdeudadas extends StatefulWidget {
 }
 
 class _PanelMateriasAdeudadasState extends State<PanelMateriasAdeudadas> {
-  final List<Map<String, dynamic>> _adeudadas = [
-    {
-      'alumno': 'Mora Romero',
-      'curso': '3ro B',
-      'materia': 'Matemática',
-      'anio_cursada': '1ro (2024)',
-      'condicion': 'Intensifica', // Intensifica, Recursa, Adeuda Previa
-      'estado_rite': 'TED', // TED, EP/TEP, TEA
-      'nota_coloquio': null,
-    },
-    {
-      'alumno': 'Mora Romero',
-      'curso': '3ro B',
-      'materia': 'Prácticas del Lenguaje',
-      'anio_cursada': '2do (2025)',
-      'condicion': 'Recursa',
-      'estado_rite': 'EP',
-      'nota_coloquio': 6.0,
-    },
-    {
-      'alumno': 'Clara Romero',
-      'curso': '2do A',
-      'materia': 'Ciencias Naturales',
-      'anio_cursada': '1ro (2025)',
-      'condicion': 'Intensifica',
-      'estado_rite': 'EP',
-      'nota_coloquio': 6.5,
-    },
-    {
-      'alumno': 'Juan Perez',
-      'curso': '4to A',
-      'materia': 'Historia',
-      'anio_cursada': '2do (2024)',
-      'condicion': 'Adeuda Previa',
-      'estado_rite': 'TED',
-      'nota_coloquio': null,
-    },
-    {
-      'alumno': 'Lucas Benitez',
-      'curso': '3ro A',
-      'materia': 'Matemática',
-      'anio_cursada': '2do (2025)',
-      'condicion': 'Recursa',
-      'estado_rite': 'TED',
-      'nota_coloquio': null,
-    },
-  ];
+  final _service = SupabaseService();
+  bool _loading = true;
+
+  List<Map<String, dynamic>> _adeudadas = [];
+  List<Map<String, dynamic>> _alumnos = [];
+  List<Map<String, dynamic>> _materias = [];
+  Map<String, String> _cursoNombrePorId = {};
 
   String _searchQuery = '';
   String _selectedMateriaFilter = 'Todas';
   String _selectedCondicionFilter = 'Todas';
 
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    setState(() => _loading = true);
+    try {
+      final results = await Future.wait([
+        _service.obtenerAdeudadasConDetalle(),
+        _service.fetchAlumnosList(),
+        _service.fetchMaterias(),
+        _service.fetchCursos(),
+      ]);
+      _adeudadas = results[0];
+      _alumnos = results[1];
+      _materias = results[2];
+      _cursoNombrePorId = {
+        for (final c in results[3])
+          (c['curso_id'] ?? '').toString(): (c['identificador_division'] ?? '').toString(),
+      };
+    } catch (e) {
+      debugPrint('Error al cargar RITE adeudadas: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _nombreAlumno(Map<String, dynamic> item) {
+    final alumno = item['usr_legajo_alumno'] as Map<String, dynamic>?;
+    final demo = alumno?['datos_demograficos'] as Map<String, dynamic>?;
+    final nombre = '${demo?['apellido'] ?? ''} ${demo?['nombre'] ?? ''}'.trim();
+    return nombre.isEmpty ? 'Alumno' : nombre;
+  }
+
+  String _cursoActual(Map<String, dynamic> item) {
+    final alumno = item['usr_legajo_alumno'] as Map<String, dynamic>?;
+    final inscs = alumno?['acad_inscripciones'] as List?;
+    final activa = inscs?.firstWhere((i) => i['estado'] == 'ACTIVO', orElse: () => inscs.isNotEmpty ? inscs.first : null);
+    final curso = (activa is Map) ? activa['acad_cursos'] as Map? : null;
+    return curso?['identificador_division']?.toString() ?? 'Sin curso';
+  }
+
+  String _cursoOrigen(Map<String, dynamic> item) {
+    final materia = item['acad_materias'] as Map<String, dynamic>?;
+    final curso = materia?['acad_cursos'] as Map?;
+    return curso?['identificador_division']?.toString() ?? '';
+  }
+
   void _abrirModalSubirAlumnoRite() {
-    final nombreCtrl = TextEditingController();
-    final cursoCtrl = TextEditingController(text: '3ro B');
-    final anioCtrl = TextEditingController(text: '1ro (2025)');
-    String selectedMateria = 'Matemática';
-    String selectedCondicion = 'Intensifica';
-    String selectedRite = 'TED';
+    String? alumnoId;
+    String? materiaId;
+    final anioCtrl = TextEditingController(text: (DateTime.now().year - 1).toString());
+    String condicion = SupabaseService.kCondicionIntensifica;
+    bool guardando = false;
 
     showDialog(
       context: context,
@@ -78,7 +89,7 @@ class _PanelMateriasAdeudadasState extends State<PanelMateriasAdeudadas> {
             children: [
               Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF6A4C9C)),
               SizedBox(width: 10),
-              Text('Subir Alumno a RITE (Intensifica / Recursa)'),
+              Expanded(child: Text('Subir Alumno a RITE')),
             ],
           ),
           content: SingleChildScrollView(
@@ -86,91 +97,102 @@ class _PanelMateriasAdeudadasState extends State<PanelMateriasAdeudadas> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Ingresá los datos del niño/a cuya trayectoria escolar se intensifica o recursa en esta materia.', style: TextStyle(fontSize: 13, color: Colors.black54)),
-                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: alumnoId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Alumno', border: OutlineInputBorder()),
+                  items: _alumnos.map((a) {
+                    return DropdownMenuItem<String>(
+                      value: a['legajo_id'] as String,
+                      child: Text('${a['nombre_completo']} (${a['curso_nombre'] ?? 'Sin curso'})', overflow: TextOverflow.ellipsis),
+                    );
+                  }).toList(),
+                  onChanged: (v) => setModalState(() => alumnoId = v),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: materiaId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Materia adeudada (real, del plan de estudios)', border: OutlineInputBorder()),
+                  items: _materias.map((m) {
+                    return DropdownMenuItem<String>(
+                      value: m['materia_id'] as String,
+                      child: Text('${m['nombre_asignatura']} — ${_cursoNombrePorId[m['curso_id']?.toString()] ?? ''}', overflow: TextOverflow.ellipsis),
+                    );
+                  }).toList(),
+                  onChanged: (v) => setModalState(() => materiaId = v),
+                ),
+                const SizedBox(height: 12),
                 TextField(
-                  controller: nombreCtrl,
-                  decoration: const InputDecoration(labelText: 'Nombre Completo del Alumno', hintText: 'Ej. Mateo Gonzalez', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: cursoCtrl,
-                        decoration: const InputDecoration(labelText: 'Curso Actual', hintText: 'Ej. 3ro B', border: OutlineInputBorder()),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: anioCtrl,
-                        decoration: const InputDecoration(labelText: 'Año Origen', hintText: 'Ej. 1ro (2025)', border: OutlineInputBorder()),
-                      ),
-                    ),
-                  ],
+                  controller: anioCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Año en que se cursó (ej. 2025)', border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: selectedMateria,
-                  decoration: const InputDecoration(labelText: 'Materia RITE', border: OutlineInputBorder()),
-                  items: ['Matemática', 'Prácticas del Lenguaje', 'Ciencias Naturales', 'Ciencias Sociales', 'Historia', 'Geografía', 'Inglés', 'Biología', 'Física', 'Química']
-                      .map((m) => DropdownMenuItem(value: m, child: Text(m)))
-                      .toList(),
-                  onChanged: (v) => setModalState(() => selectedMateria = v!),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: selectedCondicion,
+                  value: condicion,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Condición Pedagógica RITE', border: OutlineInputBorder()),
                   items: [
-                    const DropdownMenuItem(value: 'Intensifica', child: Text('⚡ INTENSIFICA (Intensificación RITE)')),
-                    const DropdownMenuItem(value: 'Recursa', child: Text('🔄 RECURSA (Recursado de Materia)')),
-                    const DropdownMenuItem(value: 'Adeuda Previa', child: Text('📌 ADEUDA PREVIA (Años Anteriores)')),
+                    DropdownMenuItem(
+                        value: SupabaseService.kCondicionIntensifica,
+                        child: const Text('⚡ INTENSIFICA (rinde mesas/coloquios)')),
+                    DropdownMenuItem(
+                        value: SupabaseService.kCondicionRecursa,
+                        child: const Text('🔄 RECURSA (la cursa de nuevo este año)')),
+                    DropdownMenuItem(
+                        value: SupabaseService.kCondicionPreviaLibre,
+                        child: const Text('📌 ADEUDA PREVIA (año no adyacente)')),
                   ],
-                  onChanged: (v) => setModalState(() => selectedCondicion = v!),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: selectedRite,
-                  decoration: const InputDecoration(labelText: 'Estado RITE Inicial', border: OutlineInputBorder()),
-                  items: const [
-                    DropdownMenuItem(value: 'TED', child: Text('🔴 TED - Trayectoria Educativa Discontinua')),
-                    DropdownMenuItem(value: 'EP', child: Text('🟡 TEP/EP - En Proceso / Periodo Complementario')),
-                    DropdownMenuItem(value: 'TEA', child: Text('🟢 TEA - Trayectoria Educativa Avanzada')),
-                  ],
-                  onChanged: (v) => setModalState(() => selectedRite = v!),
+                  onChanged: (v) => setModalState(() => condicion = v ?? condicion),
                 ),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+            TextButton(onPressed: guardando ? null : () => Navigator.pop(context), child: const Text('Cancelar')),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A4C9C), foregroundColor: Colors.white),
-              icon: const Icon(Icons.check_rounded),
+              icon: guardando
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.check_rounded),
               label: const Text('Subir Alumno a RITE'),
-              onPressed: () {
-                if (nombreCtrl.text.trim().isEmpty) return;
-                setState(() {
-                  _adeudadas.insert(0, {
-                    'alumno': nombreCtrl.text.trim(),
-                    'curso': cursoCtrl.text.trim().isEmpty ? '3ro A' : cursoCtrl.text.trim(),
-                    'materia': selectedMateria,
-                    'anio_cursada': anioCtrl.text.trim().isEmpty ? '2025' : anioCtrl.text.trim(),
-                    'condicion': selectedCondicion,
-                    'estado_rite': selectedRite,
-                    'nota_coloquio': null,
-                  });
-                });
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('✅ Alumno subido como "$selectedCondicion" en $selectedMateria exitosamente.'),
-                    backgroundColor: Colors.green.shade700,
-                  ),
-                );
-              },
+              onPressed: guardando
+                  ? null
+                  : () async {
+                      if (alumnoId == null || materiaId == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Elegí el alumno y la materia.')),
+                        );
+                        return;
+                      }
+                      setModalState(() => guardando = true);
+                      try {
+                        final materia = _materias.firstWhere((m) => m['materia_id'] == materiaId);
+                        await _service.crearMateriaAdeudada(
+                          alumnoId: alumnoId!,
+                          materiaOriginalId: materiaId,
+                          nombreMateria: materia['nombre_asignatura'].toString(),
+                          anioOrigen: int.tryParse(anioCtrl.text) ?? DateTime.now().year,
+                          condicion: condicion,
+                        );
+                        if (context.mounted) Navigator.pop(context);
+                        await _cargar();
+                        if (mounted) {
+                          ScaffoldMessenger.of(this.context).showSnackBar(
+                            SnackBar(
+                              content: Text('Alumno subido a RITE como "${SupabaseService.labelCondicionAdeudada(condicion)}".'),
+                              backgroundColor: Colors.green.shade700,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setModalState(() => guardando = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                        );
+                      }
+                    },
             ),
           ],
         ),
@@ -178,116 +200,47 @@ class _PanelMateriasAdeudadasState extends State<PanelMateriasAdeudadas> {
     );
   }
 
-  void _abrirModalEditarRite(Map<String, dynamic> item) {
-    String selectedRite = item['estado_rite'];
-    String selectedCondicion = item['condicion'] ?? 'Adeuda Previa';
-    final notaController = TextEditingController(
-      text: item['nota_coloquio'] != null ? item['nota_coloquio'].toString() : '',
-    );
-
-    showDialog(
+  Future<void> _eliminar(Map<String, dynamic> item) async {
+    final ok = await showDialog<bool>(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Text('Evaluar Materia Adeudada - ${item['alumno']}'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Materia: ${item['materia']} (${item['anio_cursada']})', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  const Text('Condición RITE del Alumno:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  DropdownButtonFormField<String>(
-                    value: selectedCondicion,
-                    isExpanded: true,
-                    items: const [
-                      DropdownMenuItem(value: 'Intensifica', child: Text('⚡ INTENSIFICA')),
-                      DropdownMenuItem(value: 'Recursa', child: Text('🔄 RECURSA')),
-                      DropdownMenuItem(value: 'Adeuda Previa', child: Text('📌 ADEUDA PREVIA')),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) setModalState(() => selectedCondicion = val);
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('Estado de RITE Actual:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                  DropdownButton<String>(
-                    value: selectedRite,
-                    isExpanded: true,
-                    items: ['TED', 'EP', 'TEA'].map((String val) {
-                      return DropdownMenuItem<String>(
-                        value: val,
-                        child: Text(val == 'TED'
-                            ? 'TED (Trayectoria Discontinua)'
-                            : val == 'EP'
-                                ? 'EP (En Proceso / TEP)'
-                                : 'TEA (Aprobada / Avanzada)'),
-                      );
-                    }).toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setModalState(() => selectedRite = val);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: notaController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Nota de Coloquio / Examen (Opcional)',
-                      hintText: 'Ej. 7.5',
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancelar'),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A4C9C)),
-                  onPressed: () {
-                    setState(() {
-                      item['condicion'] = selectedCondicion;
-                      item['estado_rite'] = selectedRite;
-                      item['nota_coloquio'] = double.tryParse(notaController.text);
-                    });
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('RITE de materia actualizado exitosamente')),
-                    );
-                  },
-                  child: const Text('Guardar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Eliminar registro RITE'),
+        content: Text('¿Eliminar "${item['nombre_materia']}" de ${_nombreAlumno(item)}? '
+            'Se borra también su historial de períodos.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
     );
+    if (ok != true) return;
+    try {
+      await _service.eliminarMateriaAdeudadaReal(item['adeudada_id'].toString());
+      await _cargar();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al eliminar: $e')));
+      }
+    }
   }
 
-  void _imprimirAdeudadas() {
-    final rowsHtml = _adeudadas.map((item) {
-      final riteClass = item['estado_rite'] == 'TEA'
-          ? 'badge-green'
-          : item['estado_rite'] == 'EP'
-              ? 'badge-blue'
-              : 'badge-red';
+  void _imprimirAdeudadas(List<Map<String, dynamic>> filtered) {
+    final rowsHtml = filtered.map((item) {
+      final aprobada = (item['estado'] ?? '') == 'APROBADA';
       return '''
         <tr>
-          <td>${item['alumno']}</td>
-          <td>${item['curso']}</td>
-          <td>${item['materia']}</td>
-          <td>${item['anio_cursada']}</td>
-          <td><b>${item['condicion'] ?? 'Adeuda Previa'}</b></td>
-          <td><span class="badge $riteClass">${item['estado_rite']}</span></td>
-          <td>${item['nota_coloquio'] ?? '-'}</td>
+          <td>${_nombreAlumno(item)}</td>
+          <td>${_cursoActual(item)}</td>
+          <td>${item['nombre_materia'] ?? ''}</td>
+          <td>${item['anio_origen'] ?? ''}</td>
+          <td><b>${SupabaseService.labelCondicionAdeudada(item['condicion']?.toString())}</b></td>
+          <td><span class="badge ${aprobada ? 'badge-green' : 'badge-red'}">${item['estado'] ?? 'PENDIENTE'}</span></td>
+          <td>${item['calificacion_final'] ?? '-'}</td>
         </tr>
       ''';
     }).join('');
@@ -302,8 +255,8 @@ class _PanelMateriasAdeudadasState extends State<PanelMateriasAdeudadas> {
             <th>Materia RITE</th>
             <th>Año Origen</th>
             <th>Condición</th>
-            <th>Estado RITE</th>
-            <th>Nota Coloquio</th>
+            <th>Estado</th>
+            <th>Nota Final</th>
           </tr>
         </thead>
         <tbody>
@@ -320,14 +273,19 @@ class _PanelMateriasAdeudadasState extends State<PanelMateriasAdeudadas> {
 
   @override
   Widget build(BuildContext context) {
-    final materiasDisponibles = ['Todas', 'Matemática', 'Prácticas del Lenguaje', 'Ciencias Naturales', 'Ciencias Sociales', 'Historia', 'Geografía', 'Inglés', 'Biología', 'Física', 'Química'];
-    final condicionesDisponibles = ['Todas', 'Intensifica', 'Recursa', 'Adeuda Previa'];
+    final materiasDisponibles = ['Todas', ..._materias.map((m) => m['nombre_asignatura'].toString()).toSet()];
+    const condicionesDisponibles = [
+      'Todas',
+      SupabaseService.kCondicionIntensifica,
+      SupabaseService.kCondicionRecursa,
+      SupabaseService.kCondicionPreviaLibre,
+    ];
 
     final filtered = _adeudadas.where((item) {
       final q = _searchQuery.toLowerCase();
-      final coincideBusqueda = item['alumno'].toString().toLowerCase().contains(q) ||
-          item['materia'].toString().toLowerCase().contains(q);
-      final coincideMateria = _selectedMateriaFilter == 'Todas' || item['materia'] == _selectedMateriaFilter;
+      final coincideBusqueda = _nombreAlumno(item).toLowerCase().contains(q) ||
+          (item['nombre_materia'] ?? '').toString().toLowerCase().contains(q);
+      final coincideMateria = _selectedMateriaFilter == 'Todas' || item['nombre_materia'] == _selectedMateriaFilter;
       final coincideCondicion = _selectedCondicionFilter == 'Todas' || item['condicion'] == _selectedCondicionFilter;
       return coincideBusqueda && coincideMateria && coincideCondicion;
     }).toList();
@@ -346,160 +304,175 @@ class _PanelMateriasAdeudadasState extends State<PanelMateriasAdeudadas> {
           IconButton(
             icon: const Icon(Icons.print_rounded),
             tooltip: 'Imprimir listado RITE adeudadas',
-            onPressed: _imprimirAdeudadas,
+            onPressed: () => _imprimirAdeudadas(filtered),
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: TextField(
-                    decoration: InputDecoration(
-                      hintText: 'Buscar por nombre del alumno o materia...',
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onChanged: (val) => setState(() => _searchQuery = val),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedMateriaFilter,
-                    decoration: InputDecoration(
-                      labelText: 'Filtro por Materia',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                    ),
-                    items: materiasDisponibles.map((m) => DropdownMenuItem(value: m, child: Text(m, overflow: TextOverflow.ellipsis))).toList(),
-                    onChanged: (v) => setState(() => _selectedMateriaFilter = v!),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedCondicionFilter,
-                    decoration: InputDecoration(
-                      labelText: 'Condición (Intensifica/Recursa)',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                    ),
-                    items: condicionesDisponibles.map((c) => DropdownMenuItem(value: c, child: Text(c, overflow: TextOverflow.ellipsis))).toList(),
-                    onChanged: (v) => setState(() => _selectedCondicionFilter = v!),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: filtered.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.assignment_turned_in_rounded, size: 54, color: Colors.grey.shade400),
-                          const SizedBox(height: 12),
-                          const Text('No hay alumnos registrados con ese criterio de búsqueda o filtro.', style: TextStyle(fontSize: 16, color: Colors.black54)),
-                        ],
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextField(
+                          decoration: InputDecoration(
+                            hintText: 'Buscar por nombre del alumno o materia...',
+                            prefixIcon: const Icon(Icons.search_rounded),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onChanged: (val) => setState(() => _searchQuery = val),
+                        ),
                       ),
-                    )
-                  : ListView.builder(
-                      itemCount: filtered.length,
-                      itemBuilder: (context, index) {
-                        final item = filtered[index];
-                        final String state = item['estado_rite'] ?? 'TED';
-                        final String condicion = item['condicion'] ?? 'Adeuda Previa';
-
-                        final Color chipColor = state == 'TEA'
-                            ? Colors.green
-                            : state == 'EP'
-                                ? Colors.blue
-                                : Colors.red;
-
-                        final Color condColor = condicion == 'Intensifica'
-                            ? Colors.deepPurple
-                            : condicion == 'Recursa'
-                                ? Colors.orange.shade800
-                                : Colors.teal.shade700;
-
-                        final String condIcon = condicion == 'Intensifica'
-                            ? '⚡ INTENSIFICA'
-                            : condicion == 'Recursa'
-                                ? '🔄 RECURSA'
-                                : '📌 ADEUDA PREVIA';
-
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: BorderSide(color: condColor.withAlpha(80), width: 1.5),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedMateriaFilter,
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            labelText: 'Filtro por Materia',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                           ),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            leading: CircleAvatar(
-                              radius: 24,
-                              backgroundColor: condColor.withAlpha(25),
-                              child: Icon(
-                                condicion == 'Intensifica'
-                                    ? Icons.bolt_rounded
-                                    : condicion == 'Recursa'
-                                        ? Icons.refresh_rounded
-                                        : Icons.bookmarks_rounded,
-                                color: condColor,
-                                size: 28,
-                              ),
-                            ),
-                            title: Row(
+                          items: materiasDisponibles.map((m) => DropdownMenuItem(value: m, child: Text(m, overflow: TextOverflow.ellipsis))).toList(),
+                          onChanged: (v) => setState(() => _selectedMateriaFilter = v!),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedCondicionFilter,
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            labelText: 'Condición',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          ),
+                          items: condicionesDisponibles
+                              .map((c) => DropdownMenuItem(
+                                  value: c,
+                                  child: Text(c == 'Todas' ? c : SupabaseService.labelCondicionAdeudada(c), overflow: TextOverflow.ellipsis)))
+                              .toList(),
+                          onChanged: (v) => setState(() => _selectedCondicionFilter = v!),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text('${item['alumno']} (${item['curso']})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                const SizedBox(width: 10),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                  decoration: BoxDecoration(color: condColor.withAlpha(25), borderRadius: BorderRadius.circular(8), border: Border.all(color: condColor)),
-                                  child: Text(condIcon, style: TextStyle(color: condColor, fontWeight: FontWeight.bold, fontSize: 11)),
+                                Icon(Icons.assignment_turned_in_rounded, size: 54, color: Colors.grey.shade400),
+                                const SizedBox(height: 12),
+                                Text(
+                                  _adeudadas.isEmpty
+                                      ? 'No hay alumnos registrados en RITE todavía.'
+                                      : 'No hay alumnos registrados con ese criterio de búsqueda o filtro.',
+                                  style: const TextStyle(fontSize: 16, color: Colors.black54),
                                 ),
                               ],
                             ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Text('Materia: ${item['materia']} | Año Cursada: ${item['anio_cursada']} \nNota Coloquio: ${item['nota_coloquio'] ?? "Pendiente de evaluación"}', style: const TextStyle(height: 1.3)),
-                            ),
-                            isThreeLine: true,
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: chipColor,
-                                    borderRadius: BorderRadius.circular(12),
+                          )
+                        : ListView.builder(
+                            itemCount: filtered.length,
+                            itemBuilder: (context, index) {
+                              final item = filtered[index];
+                              final aprobada = (item['estado'] ?? '') == 'APROBADA';
+                              final condicion = (item['condicion'] ?? '').toString();
+
+                              final Color condColor = condicion == SupabaseService.kCondicionIntensifica
+                                  ? Colors.deepPurple
+                                  : condicion == SupabaseService.kCondicionRecursa
+                                      ? Colors.orange.shade800
+                                      : Colors.teal.shade700;
+
+                              final IconData condIconData = condicion == SupabaseService.kCondicionIntensifica
+                                  ? Icons.bolt_rounded
+                                  : condicion == SupabaseService.kCondicionRecursa
+                                      ? Icons.refresh_rounded
+                                      : Icons.bookmarks_rounded;
+
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(color: condColor.withAlpha(80), width: 1.5),
+                                ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  leading: CircleAvatar(
+                                    radius: 24,
+                                    backgroundColor: condColor.withAlpha(25),
+                                    child: Icon(condIconData, color: condColor, size: 28),
                                   ),
-                                  child: Text(
-                                    state,
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                  title: Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text('${_nombreAlumno(item)} (${_cursoActual(item)})',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), overflow: TextOverflow.ellipsis),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                        decoration: BoxDecoration(color: condColor.withAlpha(25), borderRadius: BorderRadius.circular(8), border: Border.all(color: condColor)),
+                                        child: Text(SupabaseService.labelCondicionAdeudada(condicion).toUpperCase(),
+                                            style: TextStyle(color: condColor, fontWeight: FontWeight.bold, fontSize: 11)),
+                                      ),
+                                    ],
+                                  ),
+                                  subtitle: Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Text(
+                                      'Materia: ${item['nombre_materia']} (${_cursoOrigen(item)}) | Año Cursada: ${item['anio_origen']}\n'
+                                      'Nota Final: ${item['calificacion_final'] ?? "Pendiente de evaluación"}',
+                                      style: const TextStyle(height: 1.3),
+                                    ),
+                                  ),
+                                  isThreeLine: true,
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: aprobada ? Colors.green : Colors.red,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          aprobada ? 'APROBADA' : 'PENDIENTE',
+                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                                        tooltip: 'Eliminar',
+                                        onPressed: () => _eliminar(item),
+                                      ),
+                                    ],
+                                  ),
+                                  onTap: () => mostrarGestionAdeudada(
+                                    context,
+                                    adeudada: item,
+                                    nombreAlumno: _nombreAlumno(item),
+                                    onCambio: _cargar,
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                const Icon(Icons.edit_rounded, color: Colors.grey),
-                              ],
-                            ),
-                            onTap: () => _abrirModalEditarRite(item),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
-      ),
     );
   }
 }

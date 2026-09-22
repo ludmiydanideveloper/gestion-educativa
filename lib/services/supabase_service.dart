@@ -349,6 +349,7 @@ class SupabaseService {
     required String tipoIncidencia,
     required String severidad,
     required String descripcion,
+    String? materiaId,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) throw Exception('Usuario no autenticado');
@@ -358,7 +359,7 @@ class SupabaseService {
         .select('docente_id')
         .eq('auth_id', user.id)
         .single();
-    
+
     final docenteId = docenteData['docente_id'];
 
     await _client.from('aca_conducta').insert({
@@ -367,6 +368,7 @@ class SupabaseService {
       'tipo_incidencia': tipoIncidencia,
       'severidad': severidad,
       'descripcion': descripcion,
+      'materia_id': materiaId,
     });
 
     // Notificar a Administración / Equipo Directivo
@@ -1180,10 +1182,30 @@ class SupabaseService {
           valor_inasistencia,
           tipo,
           estado_justificacion,
-          asistencia_cabecera (fecha)
+          url_certificado,
+          asistencia_cabecera (fecha, tipo_asistencia, acad_materias (nombre_asignatura))
         ''')
         .eq('alumno_id', alumnoId);
     return List<Map<String, dynamic>>.from(response);
+  }
+
+  /// Sube el certificado/justificativo médico de una inasistencia puntual
+  /// (asistencia_detalle.url_certificado) y la marca JUSTIFICADO.
+  Future<void> subirCertificadoAusencia({
+    required String asistenciaDetalleId,
+    required List<int> bytes,
+    required String fileName,
+  }) async {
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final limpio = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final path = '$asistenciaDetalleId/${ts}_$limpio';
+    await _client.storage.from('certificados').uploadBinary(
+        path, Uint8List.fromList(bytes),
+        fileOptions: const FileOptions(upsert: true));
+    await _client.from('asistencia_detalle').update({
+      'url_certificado': path,
+      'estado_justificacion': 'JUSTIFICADO',
+    }).eq('asistencia_detalle_id', asistenciaDetalleId);
   }
 
   /// Desglose real de asistencia por materia para un alumno, a partir de
@@ -1923,6 +1945,40 @@ class SupabaseService {
     return ids.toSet().toList();
   }
 
+  /// Notifica al docente titular de una materia (+ dirección/preceptoría) que
+  /// tiene clases pendientes de completar en el Libro de Temas. La usa
+  /// Dirección desde la vista de solo lectura, donde no puede cargar el
+  /// temario ella misma.
+  Future<void> notificarTemarioPendiente({
+    required String materiaId,
+    required String materiaNombre,
+    required String cursoNombre,
+    required int cantidadPendientes,
+  }) async {
+    final destinatarios = <String>{};
+
+    try {
+      final mat = await _client
+          .from('acad_materias')
+          .select('docente_titular_id, usr_docentes(auth_id)')
+          .eq('materia_id', materiaId)
+          .maybeSingle();
+      final docenteAuthId = (mat?['usr_docentes'] as Map?)?['auth_id']?.toString();
+      if (docenteAuthId != null && docenteAuthId.isNotEmpty) destinatarios.add(docenteAuthId);
+    } catch (e) {
+      debugPrint('Error al resolver docente titular de la materia: $e');
+    }
+
+    destinatarios.addAll(await obtenerAuthIdsAdministracion());
+
+    await notificarSistema(
+      asunto: '📚 Libro de Temas pendiente: $materiaNombre',
+      texto: 'Hay $cantidadPendientes clase(s) de $materiaNombre ($cursoNombre) sin completar en el Libro de Temas. '
+          'Por favor cargá el temario dictado a la brevedad.',
+      destinatariosAuthIds: destinatarios.toList(),
+    );
+  }
+
   /// Envía un comunicado grupal al Cuaderno Digital para los roles/grupos seleccionados en el calendario
   Future<void> enviarComunicadoGrupal({
     required String asunto,
@@ -2024,6 +2080,8 @@ class SupabaseService {
             fecha,
             estado,
             accion_tomada,
+            materia_id,
+            acad_materias (nombre_asignatura),
             usr_legajo_alumno (
               legajo_id,
               datos_demograficos,
@@ -2812,6 +2870,219 @@ class SupabaseService {
 
   Future<void> eliminarDocPedagogico(String id) async {
     await _client.from('ped_documentos').delete().eq('id', id);
+  }
+
+  // ─── REPOSITORIO DE DOCUMENTOS INSTITUCIONALES (general, no por materia) ──
+  // ins_documentos + bucket 'institucional'. Lo sube solo Dirección; lo ve
+  // todo el personal — a diferencia del repositorio pedagógico, que es por
+  // materia y lo sube el docente para que Dirección lo revise.
+
+  Future<List<Map<String, dynamic>>> obtenerDocumentosInstitucionales() async {
+    try {
+      final res = await _client
+          .from('ins_documentos')
+          .select('*')
+          .order('created_at', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint('Error al obtener documentos institucionales: $e');
+      return [];
+    }
+  }
+
+  Future<void> subirDocumentoInstitucional({
+    required String nombre,
+    String? descripcion,
+    required List<int> bytes,
+    required String fileName,
+  }) async {
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final limpio = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final path = '${ts}_$limpio';
+    await _client.storage.from('institucional').uploadBinary(
+        path, Uint8List.fromList(bytes),
+        fileOptions: const FileOptions(upsert: true));
+    await _client.from('ins_documentos').insert({
+      'nombre': nombre,
+      'descripcion': descripcion,
+      'storage_path': path,
+      'subido_por_auth': _client.auth.currentUser?.id,
+      'subido_por_nombre': _nombreUsuarioActual(),
+    });
+  }
+
+  Future<void> eliminarDocumentoInstitucional(String id) async {
+    await _client.from('ins_documentos').delete().eq('id', id);
+  }
+
+  // ─── RITE: MATERIAS ADEUDADAS (Intensifica / Recursa / Adeuda Previa) ────
+  //
+  // condicion usa los códigos reales del CHECK de acad_materias_adeudadas:
+  //   REGULAR                → "Recursa": cursa la materia de nuevo este año
+  //   PENDIENTE_ACREDITACION → "Intensifica": rinde coloquios por período
+  //   PREVIA_LIBRE           → "Adeuda Previa": materia de un año no adyacente
+  // La PK de la tabla es adeudada_id (no id).
+
+  static const kCondicionRecursa = 'REGULAR';
+  static const kCondicionIntensifica = 'PENDIENTE_ACREDITACION';
+  static const kCondicionPreviaLibre = 'PREVIA_LIBRE';
+
+  static String labelCondicionAdeudada(String? condicion) {
+    switch (condicion) {
+      case kCondicionRecursa:
+        return 'Recursa';
+      case kCondicionIntensifica:
+        return 'Intensifica';
+      case kCondicionPreviaLibre:
+        return 'Adeuda Previa';
+      default:
+        return condicion ?? '—';
+    }
+  }
+
+  /// Versión con datos del alumno y de la materia original (curso, docente)
+  /// para la planilla RITE — obtenerMateriasAdeudadas(legajoId) más abajo es
+  /// la versión simple ya usada por otras pantallas, la dejamos intacta.
+  Future<List<Map<String, dynamic>>> obtenerAdeudadasConDetalle({String? alumnoId}) async {
+    try {
+      var q = _client.from('acad_materias_adeudadas').select('''
+            *,
+            usr_legajo_alumno (legajo_id, datos_demograficos,
+              acad_inscripciones (curso_id, estado, acad_cursos (identificador_division))),
+            acad_materias!materia_original_id (materia_id, nombre_asignatura, curso_id,
+              docente_titular_id, acad_cursos (identificador_division))
+          ''');
+      if (alumnoId != null) q = q.eq('alumno_id', alumnoId);
+      final res = await q.order('anio_origen', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint('Error al obtener materias adeudadas: $e');
+      return [];
+    }
+  }
+
+  Future<void> crearMateriaAdeudada({
+    required String alumnoId,
+    String? materiaOriginalId,
+    required String nombreMateria,
+    required int anioOrigen,
+    required String condicion,
+    String? observaciones,
+  }) async {
+    await _client.from('acad_materias_adeudadas').insert({
+      'alumno_id': alumnoId,
+      'materia_original_id': (materiaOriginalId == null || materiaOriginalId.isEmpty) ? null : materiaOriginalId,
+      'nombre_materia': nombreMateria,
+      'anio_origen': anioOrigen,
+      'condicion': condicion,
+      'estado': 'PENDIENTE',
+      'observaciones': observaciones,
+    });
+  }
+
+  Future<void> actualizarMateriaAdeudada({
+    required String adeudadaId,
+    String? condicion,
+    String? estado,
+    double? calificacionFinal,
+    String? observaciones,
+  }) async {
+    final data = <String, dynamic>{};
+    if (condicion != null) data['condicion'] = condicion;
+    if (estado != null) data['estado'] = estado;
+    if (calificacionFinal != null) data['calificacion_final'] = calificacionFinal;
+    if (observaciones != null) data['observaciones'] = observaciones;
+    if (data.isEmpty) return;
+    await _client.from('acad_materias_adeudadas').update(data).eq('adeudada_id', adeudadaId);
+  }
+
+  Future<void> eliminarMateriaAdeudadaReal(String adeudadaId) async {
+    await _client.from('acad_materias_adeudadas').delete().eq('adeudada_id', adeudadaId);
+  }
+
+  Future<List<Map<String, dynamic>>> obtenerPeriodosAdeudada(String adeudadaId) async {
+    try {
+      final res = await _client
+          .from('acad_adeudadas_periodos')
+          .select('*')
+          .eq('adeudada_id', adeudadaId)
+          .order('created_at');
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint('Error al obtener períodos de adeudada: $e');
+      return [];
+    }
+  }
+
+  /// Registra un período de intensificación (mesa/coloquio). Si el resultado
+  /// es APROBADO, marca la materia adeudada como APROBADA — recién ahí pasa
+  /// a la ficha del alumno como materia aprobada.
+  Future<void> agregarPeriodoAdeudada({
+    required String adeudadaId,
+    required String periodo,
+    double? nota,
+    required String resultado,
+  }) async {
+    await _client.from('acad_adeudadas_periodos').insert({
+      'adeudada_id': adeudadaId,
+      'periodo': periodo,
+      'nota': nota,
+      'resultado': resultado,
+      'registrado_por_auth': _client.auth.currentUser?.id,
+      'registrado_por_nombre': _nombreUsuarioActual(),
+    });
+    if (resultado == 'APROBADO') {
+      await actualizarMateriaAdeudada(
+        adeudadaId: adeudadaId,
+        estado: 'APROBADA',
+        calificacionFinal: nota,
+      );
+    }
+  }
+
+  /// Alumnos con una materia adeudada (Intensifica o Recursa) ligada a esta
+  /// materia real — para que el docente titular las gestione desde su panel.
+  Future<List<Map<String, dynamic>>> obtenerAdeudadasPorMateria(String materiaId) async {
+    try {
+      final res = await _client
+          .from('acad_materias_adeudadas')
+          .select('''
+            *,
+            usr_legajo_alumno (legajo_id, datos_demograficos)
+          ''')
+          .eq('materia_original_id', materiaId)
+          .order('anio_origen', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint('Error al obtener adeudadas de la materia: $e');
+      return [];
+    }
+  }
+
+  /// Alumnos que están RECURSANDO esta materia (condicion REGULAR, todavía
+  /// no aprobada): se suman al roster normal de la Planilla de
+  /// Calificaciones para que el docente les cargue notas como a cualquiera.
+  Future<List<AlumnoAsistencia>> obtenerRecursantesMateria(String materiaId) async {
+    try {
+      final res = await _client
+          .from('acad_materias_adeudadas')
+          .select('alumno_id, usr_legajo_alumno (legajo_id, datos_demograficos)')
+          .eq('materia_original_id', materiaId)
+          .eq('condicion', kCondicionRecursa)
+          .neq('estado', 'APROBADA');
+      return List<Map<String, dynamic>>.from(res).map((r) {
+        final alumno = r['usr_legajo_alumno'] as Map<String, dynamic>?;
+        final demo = alumno?['datos_demograficos'] as Map<String, dynamic>?;
+        final nombre = '${demo?['apellido'] ?? ''} ${demo?['nombre'] ?? ''}'.trim();
+        return AlumnoAsistencia(
+          id: (r['alumno_id'] ?? '').toString(),
+          nombre: nombre.isNotEmpty ? nombre : 'Alumno (recursando)',
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('Error al obtener recursantes de la materia: $e');
+      return [];
+    }
   }
 
   // ─── PROYECTOS INSTITUCIONALES ─────────────────────────────────────────

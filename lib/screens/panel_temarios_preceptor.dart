@@ -47,6 +47,7 @@ class _PanelTemariosPreceptorState extends State<PanelTemariosPreceptor> {
   bool _loadingCursos = true;
   bool _loadingTemarios = false;
   bool _saving = false;
+  bool _notificando = false;
 
   /// Cursos disponibles: [{curso_id, nombre}]
   List<Map<String, dynamic>> _cursos = [];
@@ -490,7 +491,7 @@ class _PanelTemariosPreceptorState extends State<PanelTemariosPreceptor> {
       ),
       drawer: const AppDrawer(),
       floatingActionButton: widget.isReadOnly
-          ? null
+          ? _buildBotonNotificarPendientes()
           : FloatingActionButton.extended(
               onPressed: () => _abrirModalRegistroTema(),
               icon: const Icon(Icons.add_rounded),
@@ -610,6 +611,60 @@ class _PanelTemariosPreceptorState extends State<PanelTemariosPreceptor> {
         ],
       ),
     );
+  }
+
+  /// Clases ya pasadas y sin temario cargado, de la materia/curso seleccionados.
+  int get _pendientesCount {
+    if (_selectedCursoId == null || _selectedMateriaId == null) return 0;
+    final ahora = DateTime.now();
+    return _construirLibro()
+        .expand((mes) => mes.clases)
+        .where((c) => !c.registrado && !c.fecha.isAfter(ahora))
+        .length;
+  }
+
+  Widget? _buildBotonNotificarPendientes() {
+    final pendientes = _pendientesCount;
+    if (pendientes == 0) return null;
+
+    return FloatingActionButton.extended(
+      backgroundColor: Colors.amber.shade800,
+      onPressed: _notificando ? null : _notificarPendientes,
+      icon: _notificando
+          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+          : const Icon(Icons.campaign_rounded),
+      label: Text('Notificar $pendientes pendiente${pendientes == 1 ? '' : 's'}'),
+    );
+  }
+
+  Future<void> _notificarPendientes() async {
+    if (_selectedCursoId == null || _selectedMateriaId == null) return;
+    final pendientes = _pendientesCount;
+    setState(() => _notificando = true);
+    try {
+      await _service.notificarTemarioPendiente(
+        materiaId: _selectedMateriaId!,
+        materiaNombre: _nombreMateriaSeleccionada,
+        cursoNombre: _nombreCursoSeleccionado,
+        cantidadPendientes: pendientes,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Se notificó al docente y a dirección sobre $pendientes clase(s) pendiente(s).'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al notificar: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _notificando = false);
+    }
   }
 
   Widget _buildLibro(ColorScheme colorScheme) {

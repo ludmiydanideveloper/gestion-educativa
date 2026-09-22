@@ -1043,7 +1043,8 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                                 onPressed: () async {
                                   final matCtrl = TextEditingController(text: 'Matemática');
                                   final anioCtrl = TextEditingController(text: (DateTime.now().year - 1).toString());
-                                  String selCond = 'Intensifica'; // Intensifica, Recursa, Adeuda Previa
+                                  // Códigos reales del CHECK de la tabla — ver SupabaseService.labelCondicionAdeudada.
+                                  String selCond = SupabaseService.kCondicionIntensifica;
 
                                   await showDialog(
                                     context: context,
@@ -1056,16 +1057,22 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                                           children: [
                                             TextField(controller: matCtrl, decoration: const InputDecoration(labelText: 'Nombre de la Materia', hintText: 'Ej. Matemática, Historia...')),
                                             const SizedBox(height: 12),
-                                            TextField(controller: anioCtrl, decoration: const InputDecoration(labelText: 'Año en que se cursó (ej. 2025 o 1ro)')),
+                                            TextField(controller: anioCtrl, decoration: const InputDecoration(labelText: 'Año en que se cursó (ej. 2025)')),
                                             const SizedBox(height: 12),
                                             const Text('Condición RITE:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                                             DropdownButtonFormField<String>(
                                               value: selCond,
                                               isExpanded: true,
-                                              items: const [
-                                                DropdownMenuItem(value: 'Intensifica', child: Text('⚡ INTENSIFICA (Intensificación)')),
-                                                DropdownMenuItem(value: 'Recursa', child: Text('🔄 RECURSA (Recursado)')),
-                                                DropdownMenuItem(value: 'Adeuda Previa', child: Text('📌 ADEUDA PREVIA')),
+                                              items: [
+                                                DropdownMenuItem(
+                                                    value: SupabaseService.kCondicionIntensifica,
+                                                    child: const Text('⚡ INTENSIFICA (Intensificación)')),
+                                                DropdownMenuItem(
+                                                    value: SupabaseService.kCondicionRecursa,
+                                                    child: const Text('🔄 RECURSA (Recursado)')),
+                                                DropdownMenuItem(
+                                                    value: SupabaseService.kCondicionPreviaLibre,
+                                                    child: const Text('📌 ADEUDA PREVIA')),
                                               ],
                                               onChanged: (v) => setDialState(() => selCond = v!),
                                             ),
@@ -1131,7 +1138,7 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
                                   children: [
                                     Padding(padding: const EdgeInsets.all(10), child: Text(m['nombre_materia'] ?? '-')),
                                     Padding(padding: const EdgeInsets.all(10), child: Text(m['anio_origen']?.toString() ?? '-')),
-                                    Padding(padding: const EdgeInsets.all(10), child: Text(m['condicion'] ?? 'ADEUDADA_RITE')),
+                                    Padding(padding: const EdgeInsets.all(10), child: Text(SupabaseService.labelCondicionAdeudada(m['condicion']?.toString()))),
                                     Padding(
                                       padding: const EdgeInsets.all(10),
                                       child: Container(

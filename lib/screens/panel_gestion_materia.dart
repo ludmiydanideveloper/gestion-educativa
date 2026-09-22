@@ -9,6 +9,7 @@ import 'panel_planificacion_diaria.dart';
 import 'panel_eoe_docente.dart';
 import 'panel_banco_evaluaciones.dart';
 import 'panel_pedagogico_materia.dart';
+import 'panel_intensificacion_materia.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/calendario_docente.dart';
 
@@ -151,6 +152,7 @@ class PanelGestionMateria extends StatelessWidget {
                     MaterialPageRoute(
                       builder: (context) => PanelConductaDiaria(
                         cursoId: cursoId,
+                        materiaId: materiaId,
                         nombreAsignatura: nombreAsignatura,
                       ),
                     ),
@@ -179,6 +181,21 @@ class PanelGestionMateria extends StatelessWidget {
                       builder: (context) => PanelTemariosPreceptor(
                         cursoIdInicial: cursoId,
                         isReadOnly: false,
+                      ),
+                    ),
+                  ),
+                ),
+                _buildSlenderActionCard(
+                  context: context,
+                  title: 'Intensificación / RITE de esta Materia',
+                  description: 'Alumnos que intensifican, recursan o adeudan esta materia de años anteriores',
+                  icon: Icons.bolt_rounded,
+                  color: Colors.deepPurple,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => PanelIntensificacionMateria(
+                        materiaId: materiaId,
+                        nombreAsignatura: nombreAsignatura,
                       ),
                     ),
                   ),

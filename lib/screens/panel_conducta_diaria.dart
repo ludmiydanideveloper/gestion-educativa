@@ -23,11 +23,16 @@ class _ConductaAlumno {
 class PanelConductaDiaria extends StatefulWidget {
   final String cursoId;
   final String nombreAsignatura;
+  /// Opcional: si se conoce (viene de "Gestión de Clases" de una materia
+  /// puntual), se guarda en cada registro para poder filtrar por materia
+  /// en el historial de Conducta.
+  final String? materiaId;
 
   const PanelConductaDiaria({
     super.key,
     required this.cursoId,
     required this.nombreAsignatura,
+    this.materiaId,
   });
 
   @override
@@ -137,6 +142,7 @@ class _PanelConductaDiariaState extends State<PanelConductaDiaria> {
               : 'LEVE',
           descripcion:
               'Conducta diaria: ${_labelEstado(a.estado)}${a.observacion.isNotEmpty ? ' — ${a.observacion}' : ''}',
+          materiaId: widget.materiaId,
         );
       } catch (_) {
         errores++;
