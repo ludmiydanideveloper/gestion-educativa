@@ -287,7 +287,7 @@ class _PanelLibroActasState extends State<PanelLibroActas> {
   @override
   Widget build(BuildContext context) {
     final rol = widget.rolUsuario ?? 'PRECEPTOR';
-    final esPersonalAutorizado = rol == 'ADMIN' || rol == 'PRECEPTOR';
+    final esPersonalAutorizado = rol == 'ADMIN' || rol == 'DIRECTIVO' || rol == 'PRECEPTOR';
 
     final filteredActas = _actas.where((acta) {
       final query = _searchQuery.toLowerCase();

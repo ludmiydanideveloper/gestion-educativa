@@ -109,7 +109,7 @@ class _AppDrawerState extends State<AppDrawer> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  _rol == 'ADMIN'
+                  _rol == 'ADMIN' || _rol == 'DIRECTIVO'
                       ? 'Gestión del Administrador'
                       : _rol == 'PRECEPTOR'
                           ? 'Gestión del Preceptor'
@@ -335,7 +335,7 @@ class _AppDrawerState extends State<AppDrawer> {
             ),
           ],
 
-          if (_rol == 'ADMIN') ...[
+          if (_rol == 'ADMIN' || _rol == 'DIRECTIVO') ...[
             ListTile(
               leading: const Icon(Icons.notifications_active_rounded),
               title: const Text('Panel de Dirección (Alertas)'),

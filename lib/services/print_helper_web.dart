@@ -1,8 +1,148 @@
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 
+import '../utils/logo_base64.dart';
 
 class PrintHelper {
+  static const String _institucion = 'Instituto Adventista Baradero';
+
+  /// Estilos del encabezado común: todos los documentos impresos (boletines,
+  /// constancias, reportes) llevan el mismo logo y nombre de la escuela.
+  static const String _cssEncabezado = '''
+    .enc { display: flex; align-items: center; gap: 18px; border-bottom: 2px solid #003265; padding-bottom: 14px; margin-bottom: 24px; }
+    .enc img { height: 100px; width: auto; object-fit: contain; }
+    .enc-inst { font-size: 20px; font-weight: bold; color: #003265; }
+    .enc-sub { font-size: 12px; color: #555; text-transform: uppercase; letter-spacing: 1.5px; }
+    .enc-tit { margin-left: auto; text-align: right; font-size: 17px; font-weight: bold; color: #003265; text-transform: uppercase; }
+    @media print { .enc { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  ''';
+
+  static String _encabezado(String titulo) => '''
+    <div class="enc">
+      <img src="$kLogoBase64" alt="Logo $_institucion">
+      <div>
+        <div class="enc-inst">$_institucion</div>
+        <div class="enc-sub">Nivel Secundario</div>
+      </div>
+      <div class="enc-tit">$titulo</div>
+    </div>''';
+
+  static String _fechaHoy() {
+    final h = DateTime.now();
+    return '${h.day}/${h.month}/${h.year}';
+  }
+
+  /// Abre el documento en una pestaña nueva, que dispara el diálogo de
+  /// impresión (desde ahí se guarda como PDF).
+  static void _abrirDocumento(String htmlContent) {
+    final blob = html.Blob([htmlContent], 'text/html;charset=utf-8');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.window.open(url, '_blank');
+    Future.delayed(const Duration(seconds: 10), () {
+      html.Url.revokeObjectUrl(url);
+    });
+  }
+
+  static String _esc(Object? v) => (v ?? '')
+      .toString()
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+
+  /// Informe de Trayectoria (boletín RITE oficial): lo mismo que muestra la
+  /// vista previa de "Boletines Oficiales", listo para imprimir o guardar en PDF.
+  static void imprimirInformeTrayectoria({
+    required String studentName,
+    required String dni,
+    required String cursoName,
+    required int anioLectivo,
+    required Object? totalInasistencias,
+    required List<Map<String, dynamic>> materias,
+    required List<Map<String, dynamic>> detalles,
+  }) {
+    var filas = '';
+    for (final mat in materias) {
+      final d = detalles.firstWhere(
+        (x) => x['materia_id'] == mat['materia_id'],
+        orElse: () => <String, dynamic>{},
+      );
+      String c(String k) => _esc(d[k]);
+      filas += '''
+        <tr>
+          <td class="mat">${_esc(mat['nombre_asignatura'])}</td>
+          <td>${c('apropiacion_contenidos')}</td>
+          <td>${c('resolucion_actividades')}</td>
+          <td>${c('participacion_clases')}</td>
+          <td>${c('planteos_dudas')}</td>
+          <td>${c('entrega_actividades')}</td>
+          <td>${c('prolijidad_carpeta')}</td>
+          <td>${c('cumplimiento_aic')}</td>
+          <td>${_esc(d['total_inasistencias'] ?? 0)}</td>
+          <td class="b">${c('resumen_1_etapa')}</td>
+          <td class="b">${c('resumen_2_etapa')}</td>
+          <td>${c('intensificacion_dic')}</td>
+          <td>${c('intensificacion_feb')}</td>
+          <td class="b">${c('calificacion_final')}</td>
+        </tr>''';
+    }
+
+    final htmlContent = '''
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Informe de Trayectoria - ${_esc(studentName)}</title>
+        <style>
+          @page { size: A4 landscape; margin: 12mm; }
+          body { font-family: 'Segoe UI', Tahoma, sans-serif; color: #222; margin: 0; }
+          $_cssEncabezado
+          .datos { display: flex; justify-content: space-between; font-size: 13px; background: #f3f6fa; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          th, td { border: 1px solid #b8c4d4; padding: 5px 4px; text-align: center; }
+          th { background: #003265; color: #fff; font-weight: 600; }
+          td.mat { text-align: left; font-weight: 600; }
+          td.b { font-weight: bold; }
+          .pie { margin-top: 14px; font-size: 11px; line-height: 1.6; border: 1px solid #d5dde8; padding: 8px 12px; border-radius: 6px; }
+          .firmas { margin-top: 40px; display: flex; justify-content: space-around; }
+          .firma { border-top: 1px solid #333; width: 220px; text-align: center; padding-top: 6px; font-size: 12px; }
+          @media print { th { background: #003265 !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+        </style>
+      </head>
+      <body>
+        ${_encabezado('Informe de Trayectoria $anioLectivo')}
+        <div class="datos">
+          <div><strong>Alumno/a:</strong> ${_esc(studentName.toUpperCase())} &nbsp;|&nbsp; <strong>DNI:</strong> ${_esc(dni)} &nbsp;|&nbsp; <strong>Curso:</strong> ${_esc(cursoName)}</div>
+          <div><strong>Total inasistencias:</strong> ${_esc(totalInasistencias ?? 0)} &nbsp;|&nbsp; <strong>Emisión:</strong> ${_fechaHoy()}</div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Materia</th><th>Apropiación</th><th>Resolución</th><th>Participación</th><th>Dudas</th>
+              <th>Entrega</th><th>Prolijidad</th><th>Cumplimiento AIC</th><th>Inasist.</th>
+              <th>Resumen 1° etapa</th><th>Resumen 2° etapa</th><th>Intensif. dic</th><th>Intensif. feb</th><th>Calif. final</th>
+            </tr>
+          </thead>
+          <tbody>$filas</tbody>
+        </table>
+        <div class="pie">
+          <strong>INFORME DE PRECEPTORÍA</strong><br>
+          Apreciaciones: S: Sobresaliente - MB: Muy bueno - B: Bueno - R: Regular<br>
+          TEA: Trayectoria Educativa Avanzada - TEP: Trayectoria Educativa en Proceso - TED: Trayectoria Educativa Discontinua<br>
+          *AIC: Acuerdos Institucionales de Convivencia.
+        </div>
+        <div class="firmas">
+          <div class="firma">Firma Preceptoría</div>
+          <div class="firma">Sello y Firma Dirección</div>
+          <div class="firma">Firma del Tutor Responsable</div>
+        </div>
+        <script>window.onload = function() { setTimeout(function() { window.print(); }, 300); };</script>
+      </body>
+      </html>
+    ''';
+
+    _abrirDocumento(htmlContent);
+  }
+
   static void imprimirBoletin({
     required String studentName,
     required String dni,
@@ -38,17 +178,11 @@ class PrintHelper {
       }
     }
 
-    String obtenerProfesor(String materia, String curso) {
-      final matLower = materia.toLowerCase();
-      if (curso.contains('1')) {
-        if (matLower.contains('historia sagrada') || matLower.contains('h. sagrada')) return 'Daniel Gomez';
-        if (matLower.contains('lenguaje') || matLower.contains('prácticas del lenguaje') || matLower.contains('p. del lenguaje')) return 'Jenica Romero';
-        if (matLower.contains('naturales') || matLower.contains('cs. naturales')) return 'Danilo Gomez';
-        if (matLower.contains('física') || matLower.contains('ed. física')) return 'Julio Lesson';
-        if (matLower.contains('ciudadanía') || matLower.contains('construcción')) return 'Maria Funes';
-        if (matLower.contains('matemática')) return 'Florencia Viero';
-      }
-      return 'A asignar';
+    // Docente titular real de la materia (fetchMaterias trae usr_docentes).
+    String obtenerProfesor(Map<String, dynamic> mat) {
+      final doc = mat['usr_docentes'];
+      final nombre = doc is Map ? doc['nombre']?.toString() : null;
+      return (nombre == null || nombre.trim().isEmpty) ? 'A asignar' : nombre;
     }
 
     // Generar las filas del boletín en HTML
@@ -63,7 +197,7 @@ class PrintHelper {
 
       for (final cat in categorias) {
         final catId = cat['id'] as String;
-        final peso = (cat['peso_porcentaje'] as num).toDouble();
+        final peso = (cat['peso_porcentaje'] as num?)?.toDouble() ?? 0.0;
         final notas = notasPorMateriaYCat[matId]?[catId] ?? [];
         if (notas.isNotEmpty) {
           final promedioCat = notas.reduce((a, b) => a + b) / notas.length;
@@ -82,15 +216,13 @@ class PrintHelper {
 
       final riteText = riteFinal != null ? riteFinal.toStringAsFixed(1) : '-';
       final riteClass = riteFinal != null && riteFinal >= 7.0 ? 'rite-green' : (riteFinal != null ? 'rite-red' : '');
-      final profName = obtenerProfesor(matName, cursoName);
+      final profName = obtenerProfesor(mat);
 
       tableRowsHtml += '''
         <tr>
           <td><strong>$matName</strong></td>
           <td>$profName</td>
-          <td>${celdasCategorias[0]}</td>
-          <td>${celdasCategorias[1]}</td>
-          <td>${celdasCategorias[2]}</td>
+          ${celdasCategorias.map((c) => '<td>$c</td>').join()}
           <td class="$riteClass"><strong>$riteText</strong></td>
         </tr>
       ''';
@@ -101,8 +233,10 @@ class PrintHelper {
       <!DOCTYPE html>
       <html>
       <head>
+        <meta charset="utf-8">
         <title>Boletin RITE - $studentName</title>
         <style>
+          $_cssEncabezado
           body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 40px;
@@ -182,11 +316,8 @@ class PrintHelper {
         </style>
       </head>
       <body>
-        <div class="header">
-          <div class="logo">🏫 EDTECH - SISTEMA DE GESTIÓN ESCOLAR</div>
-          <div class="title">Boletín Oficial de Calificaciones (RITE)</div>
-        </div>
-        
+        ${_encabezado('Boletín de Calificaciones (RITE)')}
+
         <div class="info-box">
           <div>
             <div class="info-item"><strong>Alumno:</strong> $studentName</div>
@@ -194,7 +325,7 @@ class PrintHelper {
           </div>
           <div>
             <div class="info-item"><strong>Curso:</strong> $cursoName</div>
-            <div class="info-item"><strong>Fecha de Emisión:</strong> \${DateTime.now().day}/\${DateTime.now().month}/\${DateTime.now().year}</div>
+            <div class="info-item"><strong>Fecha de Emisión:</strong> ${_fechaHoy()}</div>
           </div>
         </div>
 
@@ -203,9 +334,7 @@ class PrintHelper {
             <tr>
               <th>Asignatura</th>
               <th>Profesor</th>
-              <th>Evidencias (60%)</th>
-              <th>Desempeño (30%)</th>
-              <th>Autoevaluación (10%)</th>
+              ${categorias.map((c) => '<th>${_esc(c['nombre'])} (${_esc(c['peso_porcentaje'])}%)</th>').join()}
               <th>RITE Final</th>
             </tr>
           </thead>
@@ -216,7 +345,7 @@ class PrintHelper {
 
         <div style="margin-top: 30px; padding: 15px; border: 1px dashed #1a237e; border-radius: 8px; font-size: 13px; background-color: #fcfcfc;">
           <strong>Observaciones Pedagógicas y de Convivencia:</strong><br/>
-          \${observaciones ?? 'Alumno demuestra excelente compromiso y participación activa en clase. Continúa trabajando con el mismo entusiasmo.'}
+          ${(observaciones == null || observaciones.trim().isEmpty) ? 'Sin observaciones registradas.' : _esc(observaciones)}
         </div>
 
         <div class="signatures">
@@ -282,8 +411,10 @@ class PrintHelper {
       <!DOCTYPE html>
       <html>
       <head>
+        <meta charset="utf-8">
         <title>Reporte de Asistencia - $studentName</title>
         <style>
+          $_cssEncabezado
           body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 40px;
@@ -352,10 +483,7 @@ class PrintHelper {
         </style>
       </head>
       <body>
-        <div class="header">
-          <div class="logo">🏫 EDTECH - SISTEMA DE GESTIÓN ESCOLAR</div>
-          <div class="title">Reporte de Asistencia Detallado</div>
-        </div>
+        ${_encabezado('Reporte de Asistencia')}
         
         <div class="info-box">
           <div>
@@ -410,10 +538,10 @@ class PrintHelper {
     bool mostrarEncabezado = true,
   }) {
     final encabezadoHtml = mostrarEncabezado ? '''
-        <h1>$titulo</h1>
+        ${_encabezado(titulo)}
         <div class="header-info">
-          <div><strong>Instituto Adventista Baradero</strong></div>
-          <div><strong>Fecha de Impresión:</strong> ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}</div>
+          <div></div>
+          <div><strong>Fecha de Impresión:</strong> ${_fechaHoy()}</div>
         </div>''' : '';
 
     final htmlContent = '''
@@ -424,6 +552,7 @@ class PrintHelper {
         <meta charset="utf-8">
         <style>
           body { font-family: sans-serif; padding: 24px; color: #334155; }
+          $_cssEncabezado
           h1 { color: #6A4C9C; border-bottom: 2px solid #6A4C9C; padding-bottom: 8px; font-size: 24px; }
           .header-info { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 13px; color: #64748B; }
           table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }
@@ -507,10 +636,11 @@ class PrintHelper {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Analítico Parcial y Trayectoria - \$studentName</title>
+        <title>Analítico Parcial y Trayectoria - $studentName</title>
         <meta charset="utf-8">
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap');
+          $_cssEncabezado
           body { font-family: 'Outfit', sans-serif; padding: 40px; color: #1a1a1a; line-height: 1.5; }
           .header { text-align: center; border-bottom: 3px double #4A148C; padding-bottom: 20px; margin-bottom: 30px; }
           .logo { font-size: 26px; font-weight: bold; color: #4A148C; }
@@ -527,17 +657,14 @@ class PrintHelper {
         </style>
       </head>
       <body>
-        <div class="header">
-          <div class="logo">🎓 EdTech SGE - Colegio de Excelencia</div>
-          <div class="sub">Sistema de Gestión Escolar Integral • Ministerio de Educación</div>
-        </div>
+        ${_encabezado('Analítico y Trayectoria')}
         <div class="doc-title">ANALÍTICO PARCIAL DE MATERIAS APROBADAS Y TRAYECTORIA</div>
         
         <div class="info-box">
-          <b>Alumno/a:</b> \$studentName &nbsp;&nbsp;|&nbsp;&nbsp;
-          <b>Documento (DNI):</b> \$dni &nbsp;&nbsp;|&nbsp;&nbsp;
-          <b>Curso Actual:</b> \$cursoActual &nbsp;&nbsp;|&nbsp;&nbsp;
-          <b>Fecha de Emisión:</b> \${DateTime.now().day}/\${DateTime.now().month}/\${DateTime.now().year}
+          <b>Alumno/a:</b> $studentName &nbsp;&nbsp;|&nbsp;&nbsp;
+          <b>Documento (DNI):</b> $dni &nbsp;&nbsp;|&nbsp;&nbsp;
+          <b>Curso Actual:</b> $cursoActual &nbsp;&nbsp;|&nbsp;&nbsp;
+          <b>Fecha de Emisión:</b> ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}
         </div>
 
         <div class="section-title">1. Trayectoria Curricular Histórica por Año Lectivo</div>
@@ -551,7 +678,7 @@ class PrintHelper {
             </tr>
           </thead>
           <tbody>
-            \$trayectoriaRows
+            $trayectoriaRows
           </tbody>
         </table>
 
@@ -566,13 +693,13 @@ class PrintHelper {
             </tr>
           </thead>
           <tbody>
-            \$adeudadasRows
+            $adeudadasRows
           </tbody>
         </table>
 
         <div class="footer">
           <div class="firma-box">Firma Secretaría Académica</div>
-          <div class="firma-box">Sello y Firma Dirección<br><b>EdTech SGE</b></div>
+          <div class="firma-box">Sello y Firma Dirección<br><b>$_institucion</b></div>
         </div>
         <script>setTimeout(function() { window.print(); }, 500);</script>
       </body>
@@ -594,17 +721,18 @@ class PrintHelper {
     required String cursoName,
     String? codigoVerificacion,
   }) {
-    final codigo = codigoVerificacion ?? 'EDTECH-\${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
-    final fechaHoy = '\${DateTime.now().day} de \${_nombreMes(DateTime.now().month)} de \${DateTime.now().year}';
+    final codigo = codigoVerificacion ?? 'EDTECH-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
+    final fechaHoy = '${DateTime.now().day} de ${_nombreMes(DateTime.now().month)} de ${DateTime.now().year}';
 
     final htmlContent = '''
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Constancia de Alumno Regular - \$studentName</title>
+        <title>Constancia de Alumno Regular - $studentName</title>
         <meta charset="utf-8">
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap');
+          $_cssEncabezado
           body { font-family: 'Outfit', sans-serif; padding: 50px; color: #1a1a1a; line-height: 1.8; }
           .header { text-align: center; border-bottom: 3px double #4A148C; padding-bottom: 20px; margin-bottom: 40px; }
           .logo { font-size: 28px; font-weight: bold; color: #4A148C; }
@@ -618,32 +746,29 @@ class PrintHelper {
         </style>
       </head>
       <body>
-        <div class="header">
-          <div class="logo">🎓 EdTech SGE - Colegio de Excelencia</div>
-          <div class="sub">Sistema de Gestión Escolar Integral • Dirección Provincial de Educación</div>
-        </div>
+        ${_encabezado('Constancia')}
         
         <div class="doc-title">CONSTANCIA DE ALUMNO REGULAR</div>
         
         <div class="body-text">
-          Por la presente la Dirección de la institución <b>EdTech SGE</b> hace constar que el/la alumno/a 
-          <b style="font-size:18px; color:#2D0C57;">\$studentName</b>, titular del Documento Nacional de Identidad (D.N.I.) 
-          <b>N° \$dni</b>, es alumno/a regular matriculado/a y se encuentra cursando con asistencia activa el 
-          <b>\$cursoName</b> durante el Ciclo Lectivo Oficial <b>\${DateTime.now().year}</b>.
+          Por la presente la Dirección de la institución <b>$_institucion</b> hace constar que el/la alumno/a 
+          <b style="font-size:18px; color:#2D0C57;">$studentName</b>, titular del Documento Nacional de Identidad (D.N.I.) 
+          <b>N° $dni</b>, es alumno/a regular matriculado/a y se encuentra cursando con asistencia activa el 
+          <b>$cursoName</b> durante el Ciclo Lectivo Oficial <b>${DateTime.now().year}</b>.
           <br><br>
           Se extiende la presente constancia a pedido del interesado y/o de sus tutores legales para ser presentada ante las autoridades y organismos que así lo requieran, 
-          en la ciudad, a los \$fechaHoy.
+          en la ciudad, a los $fechaHoy.
         </div>
 
         <div class="verification">
           <b>✔ Documento Digital Verificado con Membrete Institucional</b><br>
-          Código Único de Validación Electrónica: <b>\$codigo</b><br>
-          Verificable a través del portal institucional EdTech SGE.
+          Código Único de Validación Electrónica: <b>$codigo</b><br>
+          Verificable a través del portal institucional del $_institucion.
         </div>
 
         <div class="footer">
           <div class="firma-box">Firma del Interesado / Tutor</div>
-          <div class="firma-box">Sello Institucional y Firma Dirección<br><b>Colegio EdTech SGE</b></div>
+          <div class="firma-box">Sello Institucional y Firma Dirección<br><b>$_institucion</b></div>
         </div>
         <script>setTimeout(function() { window.print(); }, 500);</script>
       </body>
@@ -730,6 +855,7 @@ class PrintHelper {
         <meta charset="utf-8">
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap');
+          $_cssEncabezado
           body { font-family: 'Outfit', sans-serif; padding: 36px; color: #1E293B; line-height: 1.5; }
           .header { text-align: center; border-bottom: 3px solid #3B82F6; padding-bottom: 20px; margin-bottom: 24px; }
           .logo { font-size: 24px; font-weight: 800; color: #1D4ED8; letter-spacing: -0.5px; }
@@ -753,10 +879,7 @@ class PrintHelper {
         </style>
       </head>
       <body>
-        <div class="header">
-          <div class="logo">🏫 INSTITUTO ADVENTISTA BARADERO - EDTECH SGE</div>
-          <div class="sub">Reporte Oficial de Inasistencias y Asistencia Curricular</div>
-        </div>
+        ${_encabezado('Reporte de Faltas por Materia')}
         
         <div class="doc-title">REPORTE DE FALTAS POR ASIGNATURA • PDF MODELO</div>
         
@@ -810,7 +933,7 @@ class PrintHelper {
         <div class="footer">
           <div class="firma-box">Firma del Profesor/a<br><strong>$materiaName</strong></div>
           <div class="firma-box">Firma Preceptoría / Secretaría<br><strong>Control de Asistencia</strong></div>
-          <div class="firma-box">Sello Institucional y Dirección<br><strong>Colegio EdTech SGE</strong></div>
+          <div class="firma-box">Sello Institucional y Dirección<br><strong>$_institucion</strong></div>
         </div>
         <script>setTimeout(function() { window.print(); }, 500);</script>
       </body>

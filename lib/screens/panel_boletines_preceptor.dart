@@ -160,6 +160,8 @@ class _PanelBoletinesPreceptorState extends State<PanelBoletinesPreceptor> {
   void _abrirVistaPreviaBoletin(Map<String, dynamic> alumno) {
     final alumnoId = alumno['id'] as String;
     final anioLectivo = DateTime.now().year;
+    // [boletín, detalles, materias] una vez cargados; los usa "Descargar".
+    List<dynamic>? datosInforme;
 
     showDialog(
       context: context,
@@ -187,7 +189,8 @@ class _PanelBoletinesPreceptorState extends State<PanelBoletinesPreceptor> {
                   boletin['boletin_id'] as String,
                   alumnoId: alumnoId,
                 );
-                return [boletin, detalles, results[1]];
+                datosInforme = [boletin, detalles, results[1]];
+                return datosInforme!;
               }),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -335,10 +338,25 @@ class _PanelBoletinesPreceptorState extends State<PanelBoletinesPreceptor> {
               child: const Text('Cerrar'),
             ),
             ElevatedButton.icon(
+              // Se habilita cuando la vista previa terminó de cargar: el PDF usa
+              // exactamente esos datos, y se abre sin esperas para que el
+              // navegador no bloquee la ventana nueva.
               onPressed: () {
-                Navigator.of(context).pop();
-                // Aca iría la lógica _imprimirBoletin adaptada al nuevo diseño
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Descarga en PDF adaptada al nuevo informe en construcción.')));
+                final datos = datosInforme;
+                if (datos == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Esperá a que termine de cargar el boletín.')));
+                  return;
+                }
+                PrintHelper.imprimirInformeTrayectoria(
+                  studentName: alumno['nombre']?.toString() ?? '',
+                  dni: alumno['dni']?.toString() ?? '',
+                  cursoName: alumno['curso_nombre']?.toString() ?? '',
+                  anioLectivo: anioLectivo,
+                  totalInasistencias: (datos[0] as Map<String, dynamic>)['total_inasistencias_diarias'],
+                  detalles: datos[1] as List<Map<String, dynamic>>,
+                  materias: datos[2] as List<Map<String, dynamic>>,
+                );
               },
               icon: const Icon(Icons.download_rounded),
               label: const Text('Descargar Informe (PDF)'),

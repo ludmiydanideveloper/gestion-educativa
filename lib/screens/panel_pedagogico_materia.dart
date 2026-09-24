@@ -35,7 +35,7 @@ class _PanelPedagogicoMateriaState extends State<PanelPedagogicoMateria> {
     super.initState();
     final user = Supabase.instance.client.auth.currentUser;
     final rol = user?.userMetadata?['rol'] as String? ?? 'DOCENTE';
-    _esAdmin = rol == 'ADMIN' || rol == 'PRECEPTOR';
+    _esAdmin = rol == 'ADMIN' || rol == 'DIRECTIVO' || rol == 'PRECEPTOR';
     _cargar();
   }
 

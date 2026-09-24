@@ -76,6 +76,17 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
     });
   }
 
+  /// Primer nombre del usuario para los saludos: primero el de usr_docentes y,
+  /// si no tiene fila ahí (p. ej. un directivo), el de los metadatos de la cuenta.
+  String? get _primerNombre {
+    final meta = Supabase.instance.client.auth.currentUser?.userMetadata;
+    final nombre = _nombreDocente ??
+        meta?['nombre'] as String? ??
+        meta?['full_name'] as String?;
+    if (nombre == null || nombre.trim().isEmpty) return null;
+    return nombre.trim().split(' ').first;
+  }
+
   Future<void> _cargarNombreDocente() async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
@@ -216,7 +227,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
 
   PreferredSizeWidget _buildAppBar(ColorScheme colorScheme, String? rol) {
     String titulo;
-    if (rol == 'ADMIN') {
+    if (rol == 'ADMIN' || rol == 'DIRECTIVO') {
       titulo = 'Panel del Administrador';
     } else if (rol == 'PRECEPTOR') {
       titulo = 'Dashboard del Preceptor';
@@ -416,7 +427,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
                         fontSize: 20,
                         fontWeight: FontWeight.bold)),
                 Text(
-                  rol == 'ADMIN'
+                  (rol == 'ADMIN' || rol == 'DIRECTIVO')
                       ? 'Gestión del Administrador'
                       : rol == 'PRECEPTOR'
                           ? 'Gestión del Preceptor'
@@ -430,7 +441,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
             ),
           ),
           // Items según rol
-          if (rol == 'PRECEPTOR' || rol == 'ADMIN') ...[
+          if (rol == 'PRECEPTOR' || rol == 'ADMIN' || rol == 'DIRECTIVO') ...[
             _drawerItem(
               icon: Icons.assignment_turned_in_rounded,
               title: 'Toma de Asistencia',
@@ -478,7 +489,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
               selected: _seccionActual == _DocenteSection.dashboard,
               onTap: () => _setSeccion(_DocenteSection.dashboard),
             ),
-          if (rol == 'ADMIN')
+          if (rol == 'ADMIN' || rol == 'DIRECTIVO')
             _drawerItem(
               icon: Icons.notifications_active_rounded,
               title: 'Panel de Dirección (Alertas)',
@@ -497,7 +508,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
                   builder: (context) => const BandejaMensajes()));
             },
           ),
-          if (rol == 'ADMIN')
+          if (rol == 'ADMIN' || rol == 'DIRECTIVO')
             _drawerItem(
               icon: Icons.point_of_sale_rounded,
               title: 'Panel de Cobros',
@@ -1022,7 +1033,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('¡Bienvenido, Administrador!',
+          Text(_primerNombre != null ? '¡Hola, $_primerNombre!' : '¡Bienvenido, Administrador!',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: colorScheme.primary,
@@ -1179,7 +1190,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
         children: [
           // Banner de bienvenida
           Text(
-            '¡Hola Preceptor!',
+            _primerNombre != null ? '¡Hola, $_primerNombre!' : '¡Hola Preceptor!',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: colorScheme.primary,
@@ -1517,7 +1528,7 @@ class _DashboardPreceptorState extends State<DashboardPreceptor> {
                       builder: (context) {
                         final user = Supabase.instance.client.auth.currentUser;
                         final rol = user?.userMetadata?['rol'] as String? ?? 'DOCENTE';
-                        final puedeAgregar = rol == 'ADMIN' || rol == 'PRECEPTOR';
+                        final puedeAgregar = rol == 'ADMIN' || rol == 'DIRECTIVO' || rol == 'PRECEPTOR';
                         return Row(
                           children: [
                             if (puedeAgregar)
@@ -3055,7 +3066,7 @@ class _CalendarioDocenteState extends State<_CalendarioDocente> {
 
     final user = Supabase.instance.client.auth.currentUser;
     final rol = user?.userMetadata?['rol'] as String? ?? 'DOCENTE';
-    final puedeAgregar = rol == 'ADMIN' || rol == 'PRECEPTOR';
+    final puedeAgregar = rol == 'ADMIN' || rol == 'DIRECTIVO' || rol == 'PRECEPTOR';
 
     return Column(
       children: [

@@ -691,7 +691,7 @@ class SupabaseService {
           
       if (docenteData != null) {
         final cargos = docenteData['ddjj_cargos']?.toString() ?? '';
-        final isPreceptorOrAdmin = cargos.contains('PRECEPTOR') || cargos.contains('ADMIN');
+        final isPreceptorOrAdmin = cargos.contains('PRECEPTOR') || cargos.contains('ADMIN') || cargos.contains('DIRECT');
         
         if (isPreceptorOrAdmin) {
           final response = await _client
@@ -1105,7 +1105,10 @@ class SupabaseService {
 
   /// Obtiene la lista de materias de un curso o todas
   Future<List<Map<String, dynamic>>> fetchMaterias({String? cursoId}) async {
-    var query = _client.from('acad_materias').select('materia_id, nombre_asignatura, curso_id');
+    // usr_docentes(nombre): docente titular, para mostrarlo en los boletines.
+    var query = _client
+        .from('acad_materias')
+        .select('materia_id, nombre_asignatura, curso_id, docente_titular_id, usr_docentes(nombre)');
     if (cursoId != null) {
       query = query.eq('curso_id', cursoId);
     }
@@ -1736,7 +1739,7 @@ class SupabaseService {
     // Dirección / preceptoría pueden tocar cualquier evento (la política RLS
     // lo permite vía es_personal_directivo()).
     final rol = user?.userMetadata?['rol'] as String?;
-    if (rol == 'ADMIN' || rol == 'PRECEPTOR') return true;
+    if (rol == 'ADMIN' || rol == 'DIRECTIVO' || rol == 'PRECEPTOR') return true;
 
     final autor = evento['creado_por']?.toString();
     if (autor != null && autor.isNotEmpty) return autor == uid;
@@ -2452,7 +2455,7 @@ class SupabaseService {
       final actas = List<Map<String, dynamic>>.from(list);
 
       // Si es ADMIN o PRECEPTOR pueden ver todas las actas
-      if (rol == 'ADMIN' || rol == 'PRECEPTOR') {
+      if (rol == 'ADMIN' || rol == 'DIRECTIVO' || rol == 'PRECEPTOR') {
         return actas;
       }
 
@@ -2568,7 +2571,7 @@ class SupabaseService {
 
   bool get esDirectivoActual {
     final rol = rolUsuarioActual();
-    return rol == 'ADMIN' || rol == 'PRECEPTOR' || rol == 'EOE';
+    return rol == 'ADMIN' || rol == 'DIRECTIVO' || rol == 'PRECEPTOR' || rol == 'EOE';
   }
 
   /// Fichas EOE activas. Si se pasa [cursoId] (portal docente) se limita a ese
@@ -2687,7 +2690,7 @@ class SupabaseService {
       'legajo_id': legajoId,
       'autor_auth': user?.id,
       'autor_nombre': _nombreUsuarioActual(),
-      'autor_rol': rol == 'ADMIN' || rol == 'PRECEPTOR'
+      'autor_rol': rol == 'ADMIN' || rol == 'DIRECTIVO' || rol == 'PRECEPTOR'
           ? 'ADMIN'
           : (rol == 'EOE' ? 'EOE' : 'DOCENTE'),
       'nota': nota,

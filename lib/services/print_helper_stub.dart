@@ -1,4 +1,16 @@
 class PrintHelper {
+  static void imprimirInformeTrayectoria({
+    required String studentName,
+    required String dni,
+    required String cursoName,
+    required int anioLectivo,
+    required Object? totalInasistencias,
+    required List<Map<String, dynamic>> materias,
+    required List<Map<String, dynamic>> detalles,
+  }) {
+    throw UnsupportedError('La impresión solo está soportada en Web.');
+  }
+
   static void imprimirBoletin({
     required String studentName,
     required String dni,

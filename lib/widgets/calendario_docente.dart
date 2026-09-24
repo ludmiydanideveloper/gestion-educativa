@@ -61,7 +61,7 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
   String get _rol =>
       Supabase.instance.client.auth.currentUser?.userMetadata?['rol'] as String? ??
       'DOCENTE';
-  bool get _esAdmin => _rol == 'ADMIN' || _rol == 'PRECEPTOR';
+  bool get _esAdmin => _rol == 'ADMIN' || _rol == 'DIRECTIVO' || _rol == 'PRECEPTOR';
 
   static const _meses = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -628,7 +628,7 @@ class _CalendarioDocenteState extends State<CalendarioDocente> {
 
     final user = Supabase.instance.client.auth.currentUser;
     final rol = user?.userMetadata?['rol'] as String? ?? 'DOCENTE';
-    final puedeAgregar = rol == 'ADMIN' || rol == 'PRECEPTOR';
+    final puedeAgregar = rol == 'ADMIN' || rol == 'DIRECTIVO' || rol == 'PRECEPTOR';
 
     final calendarContent = Column(
       children: [

@@ -652,7 +652,7 @@ class _BandejaMensajesState extends State<BandejaMensajes> {
           );
         },
       ),
-      floatingActionButton: (rol == 'PRECEPTOR' || rol == 'ADMIN')
+      floatingActionButton: (rol == 'PRECEPTOR' || rol == 'ADMIN' || rol == 'DIRECTIVO')
           ? FloatingActionButton.extended(
               onPressed: _abrirModalMensajeMasivo,
               icon: const Icon(Icons.send_rounded),
