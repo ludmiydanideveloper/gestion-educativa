@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../services/boletin_academico.dart';
+import '../widgets/boletin_academico_tabla.dart';
 import '../services/print_helper.dart';
 import '../widgets/horario_semanal.dart';
 import '../widgets/brand_widgets.dart';
@@ -39,6 +40,7 @@ class _PortalFamiliaState extends State<PortalFamilia> {
   final Map<String, List<Map<String, dynamic>>> _cacheCalificaciones = {};
   final Map<String, List<Map<String, dynamic>>> _cacheConducta = {};
   final Map<String, List<Map<String, dynamic>>> _cacheAdeudadas = {};
+  final Map<String, Future<DatosBoletin>> _cacheBoletin = {};
   List<Map<String, dynamic>> _categorias = [];
   List<Map<String, dynamic>> _calendarioEventos = [];
   DateTime _selectedCalendarDate = DateTime.now();
@@ -1819,15 +1821,11 @@ class _PortalFamiliaState extends State<PortalFamilia> {
   void _mostrarDetalleCalificacionesMateria(Map<String, dynamic> hijo, String matName, String matId, List<dynamic> calificaciones) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    final List<Map<String, dynamic>> notasMateria = [];
-    for (int i = 0; i < calificaciones.length; i++) {
-      final c = calificaciones[i];
-      final matIndex = i % 5;
-      final mappedMatId = 'm${matIndex + 1}';
-      if (mappedMatId == matId) {
-        notasMateria.add(Map<String, dynamic>.from(c));
-      }
-    }
+    final List<Map<String, dynamic>> notasMateria = [
+      for (final c in calificaciones)
+        if ((c['aca_actividades'] as Map?)?['materia_id'] == matId)
+          Map<String, dynamic>.from(c as Map),
+    ];
 
     showDialog(
       context: context,
@@ -1909,63 +1907,38 @@ class _PortalFamiliaState extends State<PortalFamilia> {
   Widget _buildHijoBoletin(Map<String, dynamic> hijo, ColorScheme colorScheme) {
     final id = hijo['legajo_id'] as String;
     final calificaciones = _cacheCalificaciones[id] ?? [];
-    
-    // Mapeo estructurado para RITE
-    final Map<String, Map<String, List<double>>> notasPorMateriaYCat = {};
-    
-    // Generar materias simuladas basadas en la demo
-    final List<Map<String, dynamic>> materias = [
-      {'materia_id': 'm1', 'nombre_asignatura': 'Matemáticas'},
-      {'materia_id': 'm2', 'nombre_asignatura': 'Lengua y Literatura'},
-      {'materia_id': 'm3', 'nombre_asignatura': 'Física y Química'},
-      {'materia_id': 'm4', 'nombre_asignatura': 'Biología'},
-      {'materia_id': 'm5', 'nombre_asignatura': 'Historia'},
-    ];
-
-    for (final mat in materias) {
-      final matId = mat['materia_id'] as String;
-      notasPorMateriaYCat[matId] = {};
-      for (final cat in _categorias) {
-        final catId = cat['id'] as String;
-        notasPorMateriaYCat[matId]![catId] = [];
-      }
-    }
-
-    // Inyectar algunas calificaciones reales/simuladas
-    for (final calif in calificaciones) {
-      final act = calif['aca_actividades'] as Map<String, dynamic>?;
-      if (act != null) {
-        final matIndex = (calificaciones.indexOf(calif) % materias.length);
-        final matId = materias[matIndex]['materia_id'] as String;
-        final catId = act['categoria_id'] as String?;
-        final nota = calif['nota_numerica'] != null ? (calif['nota_numerica'] as num).toDouble() : null;
-        if (catId != null && nota != null && notasPorMateriaYCat[matId]!.containsKey(catId)) {
-          notasPorMateriaYCat[matId]![catId]!.add(nota);
-        }
-      }
-    }
-
-    final obsTexto = hijo['nombre_completo'].toString().contains('Mora')
-        ? 'Mora ha mostrado una actitud muy positiva durante el cuatrimestre, participando activamente de los debates y cumpliendo con todas las actividades especiales. ¡Felicitaciones!'
-        : 'Clara ha tenido un desempeño sobresaliente en el área de ciencias y matemática, demostrando gran autonomía en el laboratorio. Se recomienda seguir reforzando la redacción en las entregas de lengua.';
+    final cursoId = hijo['curso_id']?.toString();
+    final alumno = BoletinAlumno(
+      id: id,
+      nombre: hijo['nombre_completo']?.toString() ?? '',
+      dni: hijo['dni']?.toString(),
+    );
+    // Se guarda el Future por hijo para no volver a consultar en cada rebuild.
+    final futuro = (cursoId == null || cursoId.isEmpty)
+        ? null
+        : _cacheBoletin.putIfAbsent(
+            id,
+            () => BoletinAcademico.cargar(service: _supabaseService, cursoId: cursoId, alumno: alumno),
+          );
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(32.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: 12,
             children: [
               Text(
-                'Boletín Oficial - ${hijo['nombre_completo']}',
+                'Boletín Académico - ${hijo['nombre_completo']}',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22.0, color: Color(0xFF0F172A)),
               ),
               ElevatedButton.icon(
                 // Mismo Boletín Académico oficial que imprime la escuela.
                 onPressed: () async {
                   final messenger = ScaffoldMessenger.of(context);
-                  final cursoId = hijo['curso_id']?.toString();
                   if (cursoId == null || cursoId.isEmpty) {
                     messenger.showSnackBar(const SnackBar(
                         content: Text('Tu hijo/a no tiene un curso asignado todavía.')));
@@ -1974,13 +1947,7 @@ class _PortalFamiliaState extends State<PortalFamilia> {
                   final error = await BoletinAcademico.imprimir(
                     service: _supabaseService,
                     cursoId: cursoId,
-                    alumnos: [
-                      BoletinAlumno(
-                        id: hijo['legajo_id'].toString(),
-                        nombre: hijo['nombre_completo']?.toString() ?? '',
-                        dni: hijo['dni']?.toString(),
-                      ),
-                    ],
+                    alumnos: [alumno],
                   );
                   if (error != null) {
                     messenger.showSnackBar(SnackBar(content: Text(error)));
@@ -1994,7 +1961,7 @@ class _PortalFamiliaState extends State<PortalFamilia> {
           ),
           const SizedBox(height: 24.0),
 
-          // Encabezado Institucional de 1° Etapa / Cuatrimestre
+          // Encabezado: alumno, curso e inasistencias reales
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -2004,95 +1971,33 @@ class _PortalFamiliaState extends State<PortalFamilia> {
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: colorScheme.primary.withAlpha(40),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              runSpacing: 10,
+              spacing: 16,
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.school_rounded, color: Colors.white, size: 28),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'INFORME DE AVANCE - 1° ETAPA / CUATRIMESTRE',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(40),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        'CICLO LECTIVO 2026',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                      ),
-                    ),
-                  ],
+                Text(
+                  'ALUMNO/A: ${hijo['nombre_completo']}  |  CURSO: ${hijo['curso_name'] ?? '-'}  |  CICLO ${DateTime.now().year}',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
                 ),
-                const SizedBox(height: 16),
-                const Divider(color: Colors.white24, height: 1),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'ALUMNO/A: ${hijo['nombre_completo']} | CURSO: ${hijo['curso_name'] ?? '1° ES'}',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.event_busy_rounded, color: colorScheme.primary, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Inasistencias: ${_calcularTotalInasistencias(id).toStringAsFixed(2)}',
+                        style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 13),
                       ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.event_busy_rounded, color: colorScheme.primary, size: 18),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Inasistencias: 0',
-                            style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24.0),
-
-          // Leyenda Informativa
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withAlpha(100),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: colorScheme.outlineVariant),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline_rounded, color: colorScheme.primary, size: 22),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Este informe se elabora y actualiza directamente con las calificaciones de evidencias y evaluaciones ponderadas por los docentes del curso en la planilla escolar.',
-                    style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                    ],
                   ),
                 ),
               ],
@@ -2100,7 +2005,7 @@ class _PortalFamiliaState extends State<PortalFamilia> {
           ),
           const SizedBox(height: 20.0),
 
-          // Tabla Oficial del Boletín / Informe de Avance
+          // Tabla: exactamente lo que trae el boletín impreso
           Card(
             elevation: 2,
             shape: RoundedRectangleBorder(
@@ -2108,228 +2013,38 @@ class _PortalFamiliaState extends State<PortalFamilia> {
               side: BorderSide(color: Colors.grey.withAlpha(51)),
             ),
             clipBehavior: Clip.antiAlias,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: DataTable(
-                headingRowColor: WidgetStateProperty.all(colorScheme.surfaceContainerHighest),
-                dataRowMinHeight: 64,
-                dataRowMaxHeight: 80,
-                columnSpacing: 24,
-                columns: const [
-                  DataColumn(label: Text('MATERIA Y DOCENTE', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('CRITERIOS CUALITATIVOS', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('TRAYECTORIA (RITE)', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('CALIFICACIÓN NUMÉRICA', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('FALTAS*', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('ACCIONES', style: TextStyle(fontWeight: FontWeight.bold))),
-                ],
-                rows: materias.map((mat) {
-                  final matId = mat['materia_id'] as String;
-                  final matName = mat['nombre_asignatura'] as String;
-
-                  double totalPonderado = 0.0;
-                  double totalPeso = 0.0;
-
-                  for (final cat in _categorias) {
-                    final catId = cat['id'] as String;
-                    final peso = (cat['peso_porcentaje'] as num).toDouble();
-                    final notas = notasPorMateriaYCat[matId]?[catId] ?? [];
-                    
-                    if (notas.isNotEmpty) {
-                      final promedioCat = notas.reduce((a, b) => a + b) / notas.length;
-                      totalPonderado += promedioCat * peso;
-                      totalPeso += peso;
-                    }
-                  }
-
-                  double? notaCierre;
-                  if (totalPeso > 0.0) {
-                    notaCierre = totalPonderado / totalPeso;
-                  }
-
-                  final notaCierreText = notaCierre != null ? notaCierre.toStringAsFixed(1) : '-';
-
-                  String valorRite = 'S/C';
-                  Color colorRite = Colors.grey;
-                  String cualitativo = 'En Proceso';
-
-                  if (notaCierre != null) {
-                    if (notaCierre >= 7.0) {
-                      valorRite = 'TEA';
-                      colorRite = Colors.green.shade700;
-                      cualitativo = 'Apropiación Plena (MB/TEA)';
-                    } else if (notaCierre >= 4.0) {
-                      valorRite = 'TEP';
-                      colorRite = Colors.orange.shade800;
-                      cualitativo = 'Desarrollo Satisfactorio (B/TEP)';
-                    } else {
-                      valorRite = 'TED';
-                      colorRite = Colors.red.shade700;
-                      cualitativo = 'En Proceso de Apoyo (R/TED)';
-                    }
-                  }
-
-                  String obtenerProfesor(String materia, String curso) {
-                    final matLower = materia.toLowerCase();
-                    if (curso.contains('1')) {
-                      if (matLower.contains('historia sagrada') || matLower.contains('h. sagrada')) return 'Daniel Gomez';
-                      if (matLower.contains('lenguaje') || matLower.contains('prácticas del lenguaje') || matLower.contains('p. del lenguaje')) return 'Jenica Romero';
-                      if (matLower.contains('naturales') || matLower.contains('cs. naturales')) return 'Danilo Gomez';
-                      if (matLower.contains('física') || matLower.contains('ed. física')) return 'Julio Lesson';
-                      if (matLower.contains('ciudadanía') || matLower.contains('construcción')) return 'Maria Funes';
-                      if (matLower.contains('matemática')) return 'Florencia Viero';
-                    }
-                    return 'Docente a cargo';
-                  }
-
-                  final profName = obtenerProfesor(matName, hijo['curso_name'] ?? '');
-
-                  return DataRow(
-                    cells: [
-                      DataCell(
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(matName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                            Text('Prof. $profName', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
-                          ],
-                        ),
-                      ),
-                      DataCell(
-                        Row(
-                          children: [
-                            Icon(Icons.check_circle_outline, size: 16, color: colorRite),
-                            const SizedBox(width: 6),
-                            Text(cualitativo, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: colorRite)),
-                          ],
-                        ),
-                      ),
-                      DataCell(
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: colorRite.withAlpha(25),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: colorRite.withAlpha(60)),
-                          ),
-                          child: Text(
-                            valorRite,
-                            style: TextStyle(fontWeight: FontWeight.bold, color: colorRite, fontSize: 13),
-                          ),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          notaCierreText,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                            color: notaCierre != null && notaCierre >= 7.0 
-                                ? Colors.green.shade800 
-                                : (notaCierre != null ? Colors.red.shade700 : colorScheme.onSurface),
-                          ),
-                        ),
-                      ),
-                      DataCell(
-                        Text('0', style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                      ),
-                      DataCell(
-                        TextButton.icon(
-                          icon: const Icon(Icons.visibility_rounded, size: 16),
-                          label: const Text('Ver Detalle', style: TextStyle(fontSize: 12)),
-                          onPressed: () => _mostrarDetalleCalificacionesMateria(hijo, matName, matId, calificaciones),
-                        ),
-                      ),
-                    ],
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24.0),
-
-          // Criterios de Evaluación Continuos (Pie del Boletín)
-          Card(
-            elevation: 0,
-            color: colorScheme.surfaceContainerHighest.withAlpha(60),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: colorScheme.outlineVariant),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('CRITERIOS CUALITATIVOS EVALUADOS POR EL DOCENTE EN ESTA ETAPA:',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 6,
-                    children: [
-                      _buildChipCriterio('✔ Apropiación de contenidos trabajados', colorScheme),
-                      _buildChipCriterio('✔ Resolución en tiempo y forma', colorScheme),
-                      _buildChipCriterio('✔ Participación activa en clases', colorScheme),
-                      _buildChipCriterio('✔ Planteo de dudas y sugerencias', colorScheme),
-                      _buildChipCriterio('✔ Prolijidad y carpeta completa', colorScheme),
-                      _buildChipCriterio('✔ Cumplimiento de los AIC*', colorScheme),
-                    ],
+            child: futuro == null
+                ? const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('Tu hijo/a no tiene un curso asignado todavía.'),
+                  )
+                : FutureBuilder<DatosBoletin>(
+                    future: futuro,
+                    builder: (context, snap) {
+                      if (snap.connectionState != ConnectionState.done) {
+                        return const Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      if (snap.hasError || snap.data == null) {
+                        return const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text('No se pudo cargar el boletín. Probá de nuevo más tarde.'),
+                        );
+                      }
+                      return BoletinAcademicoTabla(
+                        filas: snap.data!.filas,
+                        onVerDetalle: (f) => _mostrarDetalleCalificacionesMateria(
+                            hijo, f.materia, f.materiaId, calificaciones),
+                      );
+                    },
                   ),
-                ],
-              ),
-            ),
           ),
-          const SizedBox(height: 24.0),
-
-          // Observaciones en el Boletín
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16.0),
-              side: BorderSide(color: Colors.indigo.shade100),
-            ),
-            color: Colors.indigo.shade50.withAlpha(80),
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.comment_rounded, color: Colors.indigo),
-                      SizedBox(width: 12),
-                      Text(
-                        'Observaciones Generales del Boletín',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.0, color: Colors.indigo),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12.0),
-                  Text(
-                    obsTexto,
-                    style: const TextStyle(fontSize: 13.0, height: 1.5, color: Colors.black87),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          const SizedBox(height: 16.0),
+          const BoletinAcademicoLeyenda(),
         ],
       ),
-    );
-  }
-
-  Widget _buildChipCriterio(String label, ColorScheme colorScheme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Text(label, style: TextStyle(fontSize: 11, color: colorScheme.onSurface)),
     );
   }
 

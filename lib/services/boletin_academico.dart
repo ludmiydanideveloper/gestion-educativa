@@ -11,6 +11,59 @@ class BoletinAlumno {
   const BoletinAlumno({required this.id, required this.nombre, this.dni});
 }
 
+/// Una materia del boletín anual, ya resuelta: criterios del cierre y las
+/// notas por etapa. La usan el PDF y las tablas en pantalla.
+class FilaBoletin {
+  final String materiaId;
+  final String materia;
+  /// clave de criterio (criterio_apropiacion, …) → S / MB / B / R
+  final Map<String, String> criterios;
+  final String nota1Informe;
+  final String rite1Cuatri;
+  final String nota1Cuatri;
+  final String nota2Informe;
+  final String rite2Cuatri;
+  final String nota2Cuatri;
+  final String intensDic;
+  final String intensFeb;
+  final String calFinal;
+
+  const FilaBoletin({
+    required this.materiaId,
+    required this.materia,
+    required this.criterios,
+    required this.nota1Informe,
+    required this.rite1Cuatri,
+    required this.nota1Cuatri,
+    required this.nota2Informe,
+    required this.rite2Cuatri,
+    required this.nota2Cuatri,
+    required this.intensDic,
+    required this.intensFeb,
+    required this.calFinal,
+  });
+
+  String criterio(String key) => criterios[key] ?? '';
+}
+
+class DatosBoletin {
+  final String identificadorDivision;
+  final String dni;
+  final List<FilaBoletin> filas;
+  const DatosBoletin({required this.identificadorDivision, required this.dni, required this.filas});
+}
+
+/// Criterios en el orden del boletín, con su nombre corto para pantallas.
+const List<MapEntry<String, String>> kCriteriosBoletin = [
+  MapEntry('criterio_apropiacion', 'Apropiación'),
+  MapEntry('criterio_resolucion', 'Resolución'),
+  MapEntry('criterio_participacion', 'Participación'),
+  MapEntry('criterio_planteos', 'Dudas'),
+  MapEntry('criterio_entrega', 'Entrega'),
+  MapEntry('criterio_prolijidad', 'Prolijidad'),
+  MapEntry('criterio_aic', 'AIC'),
+];
+
 /// Boletín Académico oficial (el de la Planilla de Calificaciones). Es el
 /// único formato de boletín de la app: lo usan Docente, Preceptoría/Dirección,
 /// Administración y el Portal Familia, siempre con TODAS las materias del
@@ -20,6 +73,106 @@ class BoletinAlumno {
 /// Cualitativo): 1° SEGUIMIENTO = 1° informe, 1° CIERRE = 1° cuatrimestre,
 /// 2° SEGUIMIENTO = 2° informe, 2° CIERRE = 2° cuatrimestre.
 class BoletinAcademico {
+  /// Datos del boletín anual de un alumno, para mostrarlo en pantalla con
+  /// exactamente lo mismo que imprime el PDF. Todas las materias del curso.
+  static Future<DatosBoletin> cargar({
+    required SupabaseService service,
+    required String cursoId,
+    required BoletinAlumno alumno,
+  }) async {
+    final datos = await service.obtenerDatosBoletinCompleto(
+      cursoId: cursoId,
+      alumnosIds: [alumno.id],
+    );
+    final materias = _materiasOrdenadas(datos['materias']);
+    final rubricas = List<Map<String, dynamic>>.from(datos['rubricas'] ?? []);
+    final cierres = List<Map<String, dynamic>>.from(datos['cierres'] ?? []);
+    final demo = Map<String, dynamic>.from(datos['alumnosDemoData'] ?? {});
+    return DatosBoletin(
+      identificadorDivision: datos['identificadorDivision']?.toString() ?? '',
+      dni: _dniAlumno(alumno, demo[alumno.id] as Map<String, dynamic>?),
+      filas: [
+        for (final mat in materias)
+          _filaAnual(alumnoId: alumno.id, mat: mat, rubricas: rubricas, cierres: cierres),
+      ],
+    );
+  }
+
+  static List<Map<String, dynamic>> _materiasOrdenadas(Object? materias) {
+    final lista = List<Map<String, dynamic>>.from((materias as List?) ?? []);
+    lista.sort((a, b) => (a['nombre_asignatura'] ?? '')
+        .toString()
+        .compareTo((b['nombre_asignatura'] ?? '').toString()));
+    return lista;
+  }
+
+  static String _dniAlumno(BoletinAlumno alumno, Map<String, dynamic>? demo) {
+    final d = alumno.dni;
+    if (d != null && d.trim().isNotEmpty && !d.toLowerCase().contains('no cargado')) return d;
+    return demo?['dni']?.toString() ?? '-';
+  }
+
+  static FilaBoletin _filaAnual({
+    required String alumnoId,
+    required Map<String, dynamic> mat,
+    required List<Map<String, dynamic>> rubricas,
+    required List<Map<String, dynamic>> cierres,
+  }) {
+    final matId = mat['materia_id'] as String;
+    final rubricasMat =
+        rubricas.where((r) => r['alumno_id'] == alumnoId && r['materia_id'] == matId).toList();
+    Map<String, dynamic>? buscarRubrica(String et) {
+      final m = rubricasMat.where((r) => r['etapa'] == et).toList();
+      return m.isNotEmpty ? m.first : null;
+    }
+
+    final rubrica = buscarRubrica('1° CIERRE') ??
+        buscarRubrica('1° SEGUIMIENTO') ??
+        (rubricasMat.isNotEmpty ? rubricasMat.first : null);
+
+    final cierresMat =
+        cierres.where((c) => c['alumno_id'] == alumnoId && c['materia_id'] == matId).toList();
+    Map<String, dynamic>? buscarCierre(String etapa) {
+      final m = cierresMat.where((c) => c['etapa'] == etapa).toList();
+      return m.isNotEmpty ? m.first : null;
+    }
+
+    final cierre1 = buscarCierre('1° CIERRE');
+    final cierre2 = buscarCierre('2° CIERRE');
+    String rite(Map<String, dynamic>? c) => c?['condicion_trayectoria']?.toString() ?? '';
+    String unDecimal(Map<String, dynamic>? c) => c?['calificacion_numerica'] != null
+        ? (c!['calificacion_numerica'] as num).toStringAsFixed(1)
+        : '';
+
+    final nota1 = (cierre1?['calificacion_numerica'] as num?)?.toDouble();
+    final nota2 = (cierre2?['calificacion_numerica'] as num?)?.toDouble();
+    String calFinal = '';
+    if (nota1 != null && nota2 != null) {
+      calFinal = ((nota1 + nota2) / 2).toStringAsFixed(1);
+    } else if (nota1 != null) {
+      calFinal = nota1.toStringAsFixed(1);
+    } else if (nota2 != null) {
+      calFinal = nota2.toStringAsFixed(1);
+    }
+
+    return FilaBoletin(
+      materiaId: matId,
+      materia: (mat['nombre_asignatura'] ?? 'Materia').toString(),
+      criterios: {
+        for (final c in kCriteriosBoletin) c.key: rubrica?[c.key]?.toString() ?? '',
+      },
+      nota1Informe: _nota(buscarCierre('1° SEGUIMIENTO')?['calificacion_numerica']),
+      rite1Cuatri: rite(cierre1),
+      nota1Cuatri: _nota(cierre1?['calificacion_numerica']),
+      nota2Informe: _nota(buscarCierre('2° SEGUIMIENTO')?['calificacion_numerica']),
+      rite2Cuatri: rite(cierre2),
+      nota2Cuatri: _nota(cierre2?['calificacion_numerica']),
+      intensDic: unDecimal(buscarCierre('INTENSIFICACION_DIC')),
+      intensFeb: unDecimal(buscarCierre('INTENSIFICACION_FEB')),
+      calFinal: calFinal,
+    );
+  }
+
   /// [tipoBoletin]: 'ANUAL' (por defecto), '1°C' o '2°C'.
   /// Devuelve un mensaje de error, o null si se abrió el boletín.
   static Future<String?> imprimir({
@@ -35,11 +188,7 @@ class BoletinAcademico {
       alumnosIds: alumnos.map((a) => a.id).toList(),
     );
 
-    final List<Map<String, dynamic>> materiasCurso =
-        List<Map<String, dynamic>>.from(datos['materias'] ?? []);
-    materiasCurso.sort((a, b) => (a['nombre_asignatura'] ?? '')
-        .toString()
-        .compareTo((b['nombre_asignatura'] ?? '').toString()));
+    final List<Map<String, dynamic>> materiasCurso = _materiasOrdenadas(datos['materias']);
     final List<Map<String, dynamic>> rubricas =
         List<Map<String, dynamic>>.from(datos['rubricas'] ?? []);
     final List<Map<String, dynamic>> cierres =
@@ -56,13 +205,7 @@ class BoletinAcademico {
     final List<String> boletinesHtml = [];
 
     for (final alumno in alumnos) {
-      final demo = alumnosDemoData[alumno.id] as Map<String, dynamic>? ?? {};
-      final dniAlumno = (alumno.dni != null &&
-              alumno.dni!.trim().isNotEmpty &&
-              !alumno.dni!.toLowerCase().contains('no cargado'))
-          ? alumno.dni!
-          : null;
-      final dni = dniAlumno ?? demo['dni']?.toString() ?? '-';
+      final dni = _dniAlumno(alumno, alumnosDemoData[alumno.id] as Map<String, dynamic>?);
 
       final List<String> filasMaterias = [];
 
@@ -85,9 +228,6 @@ class BoletinAcademico {
 
         final rubricaSeg = buscarRubrica(etapaSeg);
         final rubricaCierre = buscarRubrica(etapaCierre);
-        final rubrica = rubricaCierre ??
-            rubricaSeg ??
-            (rubricasMat.isNotEmpty ? rubricasMat.first : null);
 
         final cierresMat = cierres
             .where((c) => c['alumno_id'] == alumno.id && c['materia_id'] == matId)
@@ -105,7 +245,6 @@ class BoletinAcademico {
         final cierreDic = buscarCierre('INTENSIFICACION_DIC');
         final cierreFeb = buscarCierre('INTENSIFICACION_FEB');
 
-        String cr(String key) => rubrica?[key]?.toString() ?? '';
         String crs(String key) => rubricaSeg?[key]?.toString() ?? '';
         String crc(String key) => rubricaCierre?[key]?.toString() ?? '';
 
@@ -118,33 +257,21 @@ class BoletinAcademico {
             c?['condicion_trayectoria']?.toString() ?? '';
 
         if (tipoBoletin == 'ANUAL') {
-          final nota1 = (cierre1?['calificacion_numerica'] as num?)?.toDouble();
-          final nota2 = (cierre2?['calificacion_numerica'] as num?)?.toDouble();
-          String calFinal = '';
-          if (nota1 != null && nota2 != null) {
-            calFinal = ((nota1 + nota2) / 2).toStringAsFixed(1);
-          } else if (nota1 != null) {
-            calFinal = nota1.toStringAsFixed(1);
-          } else if (nota2 != null) {
-            calFinal = nota2.toStringAsFixed(1);
-          }
-
+          final f = _filaAnual(alumnoId: alumno.id, mat: mat, rubricas: rubricas, cierres: cierres);
           filasMaterias.add('''
               <tr>
                 <td class="td-mat">$nombreMat</td>
-                <td class="td-c">${cr('criterio_apropiacion')}</td><td class="td-c">${cr('criterio_resolucion')}</td><td class="td-c">${cr('criterio_participacion')}</td>
-                <td class="td-c">${cr('criterio_planteos')}</td><td class="td-c">${cr('criterio_entrega')}</td><td class="td-c">${cr('criterio_prolijidad')}</td>
-                <td class="td-c">${cr('criterio_aic')}</td>
+                ${kCriteriosBoletin.map((c) => '<td class="td-c">${f.criterio(c.key)}</td>').join()}
                 <td class="td-c"></td>
-                <td class="td-c td-inf">${notaEntera(seg1)}</td>
-                <td class="td-c td-tray">${rite(cierre1)}</td>
-                <td class="td-c td-final">${notaEntera(cierre1)}</td>
-                <td class="td-c td-inf">${notaEntera(seg2)}</td>
-                <td class="td-c td-tray">${rite(cierre2)}</td>
-                <td class="td-c td-final">${notaEntera(cierre2)}</td>
-                <td class="td-c">${formatNota(cierreDic)}</td>
-                <td class="td-c">${formatNota(cierreFeb)}</td>
-                <td class="td-c td-final">$calFinal</td>
+                <td class="td-c td-inf">${f.nota1Informe}</td>
+                <td class="td-c td-tray">${f.rite1Cuatri}</td>
+                <td class="td-c td-final">${f.nota1Cuatri}</td>
+                <td class="td-c td-inf">${f.nota2Informe}</td>
+                <td class="td-c td-tray">${f.rite2Cuatri}</td>
+                <td class="td-c td-final">${f.nota2Cuatri}</td>
+                <td class="td-c">${f.intensDic}</td>
+                <td class="td-c">${f.intensFeb}</td>
+                <td class="td-c td-final">${f.calFinal}</td>
               </tr>
             ''');
         } else {

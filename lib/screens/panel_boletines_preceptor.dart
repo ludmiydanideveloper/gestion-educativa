@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
-import '../services/print_helper.dart';
 import '../services/boletin_academico.dart';
+import '../widgets/boletin_academico_tabla.dart';
 
 class PanelBoletinesPreceptor extends StatefulWidget {
   final String? cursoIdInicial;
@@ -100,64 +100,6 @@ class _PanelBoletinesPreceptorState extends State<PanelBoletinesPreceptor> {
     });
   }
 
-  Future<void> _imprimirBoletin(Map<String, dynamic> alumno) async {
-    if (_selectedCursoId == null) return;
-    
-    setState(() => _generatingBoletin = true);
-    try {
-      final alumnoId = alumno['id'] as String;
-      
-      final results = await Future.wait([
-        _service.obtenerCategoriasCalificaciones(),
-        _service.obtenerCalificacionesAlumno(alumnoId),
-        _service.fetchMaterias(cursoId: _selectedCursoId!),
-      ]);
-
-      PrintHelper.imprimirBoletin(
-        studentName: alumno['nombre'] ?? '',
-        dni: alumno['dni']?.toString() ?? '',
-        cursoName: alumno['curso_nombre'] ?? 'Sin curso',
-        categorias: results[0] as List<Map<String, dynamic>>,
-        calificaciones: results[1] as List<Map<String, dynamic>>,
-        materias: results[2] as List<Map<String, dynamic>>,
-      );
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Boletín RITE generado con éxito.'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error al generar boletín: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al generar boletín: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } finally {
-      setState(() => _generatingBoletin = false);
-    }
-  }
-
-  String _obtenerProfesor(String materiaName) {
-    final cleanMateria = materiaName.trim().toLowerCase();
-    if (cleanMateria.contains('historia sagrada')) return 'Daniel Gomez';
-    if (cleanMateria.contains('lenguaje') || cleanMateria.contains('prácticas del lenguaje')) return 'Jenica Romero';
-    if (cleanMateria.contains('naturales')) return 'Danilo Gomez';
-    if (cleanMateria.contains('física') || cleanMateria.contains('educación física')) return 'Julio Lesson';
-    if (cleanMateria.contains('ciudadanía') || cleanMateria.contains('construcción de la ciudadanía')) return 'Maria Funes';
-    if (cleanMateria.contains('matemática')) return 'Florencia Viero';
-    return 'Docente Asignado';
-  }
-
   void _abrirVistaPreviaBoletin(Map<String, dynamic> alumno) {
     final alumnoId = alumno['id'] as String;
     final anioLectivo = DateTime.now().year;
@@ -181,15 +123,16 @@ class _PanelBoletinesPreceptorState extends State<PanelBoletinesPreceptor> {
             child: FutureBuilder<List<dynamic>>(
               future: Future.wait([
                 _service.obtenerOCrearBoletin(alumnoId, _selectedCursoId!, anioLectivo),
-                _service.fetchMaterias(cursoId: _selectedCursoId!),
-              ]).then((results) async {
-                final boletin = results[0] as Map<String, dynamic>;
-                final detalles = await _service.obtenerDetallesBoletin(
-                  boletin['boletin_id'] as String,
-                  alumnoId: alumnoId,
-                );
-                return [boletin, detalles, results[1]];
-              }),
+                BoletinAcademico.cargar(
+                  service: _service,
+                  cursoId: _selectedCursoId!,
+                  alumno: BoletinAlumno(
+                    id: alumnoId,
+                    nombre: alumno['nombre']?.toString() ?? '',
+                    dni: alumno['dni']?.toString(),
+                  ),
+                ),
+              ]),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const SizedBox(
@@ -205,8 +148,7 @@ class _PanelBoletinesPreceptorState extends State<PanelBoletinesPreceptor> {
                 }
 
                 final boletin = snapshot.data![0] as Map<String, dynamic>;
-                final detalles = snapshot.data![1] as List<Map<String, dynamic>>;
-                final materias = snapshot.data![2] as List<Map<String, dynamic>>;
+                final datosBoletin = snapshot.data![1] as DatosBoletin;
 
                 return SingleChildScrollView(
                   child: Column(
@@ -232,7 +174,7 @@ class _PanelBoletinesPreceptorState extends State<PanelBoletinesPreceptor> {
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                                 ),
                                 const SizedBox(height: 4),
-                                Text('DNI: ${alumno['dni']}  |  AÑO: ${alumno['curso_nombre']}'),
+                                Text('DNI: ${datosBoletin.dni}  |  AÑO: ${datosBoletin.identificadorDivision}'),
                               ],
                             ),
                             Column(
@@ -255,75 +197,11 @@ class _PanelBoletinesPreceptorState extends State<PanelBoletinesPreceptor> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Tabla
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: DataTable(
-                          columnSpacing: 16,
-                          headingRowColor: MaterialStateProperty.all(colorScheme.primaryContainer.withAlpha(100)),
-                          columns: const [
-                            DataColumn(label: Text('MATERIA', style: TextStyle(fontWeight: FontWeight.bold))),
-                            DataColumn(label: SizedBox(width: 80, child: Text('Apropiación', textAlign: TextAlign.center, style: TextStyle(fontSize: 11)))),
-                            DataColumn(label: SizedBox(width: 80, child: Text('Resolución', textAlign: TextAlign.center, style: TextStyle(fontSize: 11)))),
-                            DataColumn(label: SizedBox(width: 80, child: Text('Participación', textAlign: TextAlign.center, style: TextStyle(fontSize: 11)))),
-                            DataColumn(label: SizedBox(width: 80, child: Text('Dudas', textAlign: TextAlign.center, style: TextStyle(fontSize: 11)))),
-                            DataColumn(label: SizedBox(width: 80, child: Text('Entrega', textAlign: TextAlign.center, style: TextStyle(fontSize: 11)))),
-                            DataColumn(label: SizedBox(width: 80, child: Text('Prolijidad', textAlign: TextAlign.center, style: TextStyle(fontSize: 11)))),
-                            DataColumn(label: SizedBox(width: 80, child: Text('Cumplimiento AIC', textAlign: TextAlign.center, style: TextStyle(fontSize: 11)))),
-                            DataColumn(label: SizedBox(width: 80, child: Text('Inasist.', textAlign: TextAlign.center, style: TextStyle(fontSize: 11)))),
-                            DataColumn(label: SizedBox(width: 80, child: Text('RESUMEN 1° ETAPA', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)))),
-                            DataColumn(label: SizedBox(width: 80, child: Text('RESUMEN 2° ETAPA', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)))),
-                            DataColumn(label: SizedBox(width: 80, child: Text('INTENSIF. DIC', textAlign: TextAlign.center, style: TextStyle(fontSize: 11)))),
-                            DataColumn(label: SizedBox(width: 80, child: Text('INTENSIF. FEB', textAlign: TextAlign.center, style: TextStyle(fontSize: 11)))),
-                            DataColumn(label: SizedBox(width: 80, child: Text('CALIF. FINAL', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)))),
-                          ],
-                          rows: materias.map((mat) {
-                            final matId = mat['materia_id'] as String;
-                            final matName = mat['nombre_asignatura'] as String;
-                            
-                            final d = detalles.firstWhere(
-                              (x) => x['materia_id'] == matId,
-                              orElse: () => <String, dynamic>{},
-                            );
+                      // Misma tabla que el Boletín Académico impreso
+                      BoletinAcademicoTabla(filas: datosBoletin.filas),
 
-                            return DataRow(
-                              cells: [
-                                DataCell(Text(matName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
-                                DataCell(Center(child: Text(d['apropiacion_contenidos'] ?? ''))),
-                                DataCell(Center(child: Text(d['resolucion_actividades'] ?? ''))),
-                                DataCell(Center(child: Text(d['participacion_clases'] ?? ''))),
-                                DataCell(Center(child: Text(d['planteos_dudas'] ?? ''))),
-                                DataCell(Center(child: Text(d['entrega_actividades'] ?? ''))),
-                                DataCell(Center(child: Text(d['prolijidad_carpeta'] ?? ''))),
-                                DataCell(Center(child: Text(d['cumplimiento_aic'] ?? ''))),
-                                DataCell(Center(child: Text((d['total_inasistencias'] ?? 0).toString()))),
-                                DataCell(Center(child: Text(d['resumen_1_etapa'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)))),
-                                DataCell(Center(child: Text(d['resumen_2_etapa'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)))),
-                                DataCell(Center(child: Text(d['intensificacion_dic'] ?? ''))),
-                                DataCell(Center(child: Text(d['intensificacion_feb'] ?? ''))),
-                                DataCell(Center(child: Text(d['calificacion_final']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.bold)))),
-                              ],
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                      
                       const SizedBox(height: 16),
-                      // Pie de página de preceptoria
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        color: colorScheme.surfaceVariant.withAlpha(50),
-                        child: const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('INFORME DE PRECEPTORÍA', style: TextStyle(fontWeight: FontWeight.bold)),
-                            SizedBox(height: 8),
-                            Text('Apreciaciones: S: Sobresaliente - MB: Muy bueno - B: Bueno - R: Regular', style: TextStyle(fontSize: 12)),
-                            Text('TEA: Trayectoria Educativa Avanzada - TEP: Trayectoria Educativa en Proceso - TED: Trayectoria Educativa Discontinua', style: TextStyle(fontSize: 12)),
-                            Text('*AIC: Acuerdos Institucionales de Convivencia.', style: TextStyle(fontSize: 12)),
-                          ],
-                        ),
-                      )
+                      const BoletinAcademicoLeyenda(),
                     ],
                   ),
                 );
