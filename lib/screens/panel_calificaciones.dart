@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../models/alumno_asistencia.dart';
 import '../services/print_helper.dart';
-import '../utils/logo_base64.dart';
+import '../services/boletin_academico.dart';
 
 class PanelCalificaciones extends StatefulWidget {
   final String? materiaId;
@@ -1585,493 +1585,29 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
           cursoId = mat['curso_id'].toString();
         }
       }
-
-      final alumnosIds = alumnoEspecifico != null
-          ? [alumnoEspecifico.id]
-          : _alumnos.map((a) => a.id).toList();
-
-      final datos = await _supabaseService.obtenerDatosBoletinCompleto(
-        cursoId: cursoId,
-        alumnosIds: alumnosIds,
-      );
-
-      final List<Map<String, dynamic>> materiasCurso =
-          List<Map<String, dynamic>>.from(datos['materias'] ?? []);
-      final List<Map<String, dynamic>> rubricas =
-          List<Map<String, dynamic>>.from(datos['rubricas'] ?? []);
-      final List<Map<String, dynamic>> cierres =
-          List<Map<String, dynamic>>.from(datos['cierres'] ?? []);
-      final String identificadorDivision =
-          datos['identificadorDivision']?.toString() ?? '';
-      final Map<String, dynamic> alumnosDemoData =
-          Map<String, dynamic>.from(datos['alumnosDemoData'] ?? {});
-
-      if (materiasCurso.isEmpty) {
-        _mostrarError('No se encontraron materias para este curso.');
+      if (cursoId == null) {
+        _mostrarError('No se pudo determinar el curso.');
         return;
       }
 
-      final alumnosAPrint =
-          alumnoEspecifico != null ? [alumnoEspecifico] : _alumnos;
-      final List<String> boletinesHtml = [];
+      final alumnos = (alumnoEspecifico != null ? [alumnoEspecifico] : _alumnos)
+          .map((a) => BoletinAlumno(id: a.id, nombre: a.nombre))
+          .toList();
 
-      for (final alumno in alumnosAPrint) {
-        final demo =
-            alumnosDemoData[alumno.id] as Map<String, dynamic>? ?? {};
-        final dni = demo['dni']?.toString() ?? '-';
-
-        final List<String> filasMaterias = [];
-
-        for (final mat in materiasCurso) {
-          final matId = mat['materia_id'] as String;
-          final nombreMat =
-              (mat['nombre_asignatura'] ?? 'Materia').toString().toUpperCase();
-
-          // Todas las rubricas de este alumno/materia
-          final rubricasMat = rubricas
-              .where((r) =>
-                  r['alumno_id'] == alumno.id && r['materia_id'] == matId)
-              .toList();
-
-          // Etapa base según tipo de boletín
-          final etapaSeg = tipoBoletin == '2°C' ? '2° SEGUIMIENTO' : '1° SEGUIMIENTO';
-          final etapaCierre = tipoBoletin == '2°C' ? '2° CIERRE' : '1° CIERRE';
-
-          Map<String, dynamic>? buscarRubrica(String et) =>
-              rubricasMat.where((r) => r['etapa'] == et).isNotEmpty
-                  ? rubricasMat.firstWhere((r) => r['etapa'] == et)
-                  : null;
-
-          // Para ANUAL: criterios del 1° CIERRE; para cuatrimestre: del cierre correspondiente
-          final rubricaSeg = buscarRubrica(etapaSeg);
-          final rubricaCierre = buscarRubrica(etapaCierre);
-          // Fallback para ANUAL
-          final rubrica = rubricaCierre ?? rubricaSeg ??
-              (rubricasMat.isNotEmpty ? rubricasMat.first : null);
-
-          // Cierres de etapa para esta materia/alumno
-          final cierresMat = cierres
-              .where((c) =>
-                  c['alumno_id'] == alumno.id && c['materia_id'] == matId)
-              .toList();
-
-          Map<String, dynamic>? buscarCierre(String etapa) {
-            final matches =
-                cierresMat.where((c) => c['etapa'] == etapa).toList();
-            return matches.isNotEmpty ? matches.first : null;
-          }
-
-          final cierre1   = buscarCierre('1° CIERRE');
-          final cierre2   = buscarCierre('2° CIERRE');
-          final cierreDic = buscarCierre('INTENSIFICACION_DIC');
-          final cierreFeb = buscarCierre('INTENSIFICACION_FEB');
-
-          // Criterios de rúbrica (usados en boletín ANUAL)
-          String cr(String key) => rubrica?[key]?.toString() ?? '';
-          // Criterios del seguimiento (cuatrimestre)
-          String crs(String key) => rubricaSeg?[key]?.toString() ?? '';
-          // Criterios del cierre (cuatrimestre)
-          String crc(String key) => rubricaCierre?[key]?.toString() ?? '';
-
-          String formatNota(Map<String, dynamic>? c) =>
-              c?['calificacion_numerica'] != null
-                  ? (c!['calificacion_numerica'] as num).toStringAsFixed(1)
-                  : '';
-
-          if (tipoBoletin == 'ANUAL') {
-            // ── Boletín ANUAL: 1 set criterios (del cierre) + ambas calificaciones ──
-            final ap  = cr('criterio_apropiacion');
-            final res = cr('criterio_resolucion');
-            final par = cr('criterio_participacion');
-            final pla = cr('criterio_planteos');
-            final ent = cr('criterio_entrega');
-            final pro = cr('criterio_prolijidad');
-            final aic = cr('criterio_aic');
-
-            final resumen1 = cierre1?['condicion_trayectoria']?.toString() ?? '';
-            final resumen2 = cierre2?['condicion_trayectoria']?.toString() ?? '';
-            final intDic = formatNota(cierreDic);
-            final intFeb = formatNota(cierreFeb);
-
-            final nota1 = cierre1?['calificacion_numerica'] != null
-                ? (cierre1!['calificacion_numerica'] as num).toDouble() : null;
-            final nota2 = cierre2?['calificacion_numerica'] != null
-                ? (cierre2!['calificacion_numerica'] as num).toDouble() : null;
-            String calFinal = '';
-            if (nota1 != null && nota2 != null) {
-              calFinal = ((nota1 + nota2) / 2).toStringAsFixed(1);
-            } else if (nota1 != null) {
-              calFinal = nota1.toStringAsFixed(1);
-            } else if (nota2 != null) {
-              calFinal = nota2.toStringAsFixed(1);
-            }
-            final nota1Str = nota1 != null ? nota1.toStringAsFixed(0) : '';
-            final nota2Str = nota2 != null ? nota2.toStringAsFixed(0) : '';
-
-            filasMaterias.add('''
-              <tr>
-                <td class="td-mat">$nombreMat</td>
-                <td class="td-c">$ap</td><td class="td-c">$res</td><td class="td-c">$par</td>
-                <td class="td-c">$pla</td><td class="td-c">$ent</td><td class="td-c">$pro</td>
-                <td class="td-c">$aic</td>
-                <td class="td-c"></td>
-                <td class="td-c td-tray">$resumen1</td>
-                <td class="td-c td-final">$nota1Str</td>
-                <td class="td-c td-tray">$resumen2</td>
-                <td class="td-c td-final">$nota2Str</td>
-                <td class="td-c">$intDic</td>
-                <td class="td-c">$intFeb</td>
-                <td class="td-c td-final">$calFinal</td>
-              </tr>
-            ''');
-          } else {
-            // ── Boletín CUATRIMESTRAL: seguimiento + cierre, 1 calificación ──
-            final cierreCuat = tipoBoletin == '2°C' ? cierre2 : cierre1;
-            final resumenCuat = cierreCuat?['condicion_trayectoria']?.toString() ?? '';
-            final notaCuat = cierreCuat?['calificacion_numerica'] != null
-                ? (cierreCuat!['calificacion_numerica'] as num).toStringAsFixed(0) : '';
-            final intDic = formatNota(cierreDic);
-            final intFeb = formatNota(cierreFeb);
-            // Datos de seguimiento
-            final cierreSeg = buscarCierre(etapaSeg);
-            final riteSeg    = cierreSeg?['condicion_trayectoria']?.toString() ?? '';
-            final calSeg     = cierreSeg?['calificacion_numerica'] != null
-                ? (cierreSeg!['calificacion_numerica'] as num).toStringAsFixed(0) : '';
-            // calFinal solo para 2° cuatrimestre
-            String calFinal = '';
-            if (tipoBoletin == '2°C') {
-              final n1 = cierre1?['calificacion_numerica'] != null
-                  ? (cierre1!['calificacion_numerica'] as num).toDouble() : null;
-              final n2 = cierre2?['calificacion_numerica'] != null
-                  ? (cierre2!['calificacion_numerica'] as num).toDouble() : null;
-              if (n1 != null && n2 != null) calFinal = ((n1 + n2) / 2).toStringAsFixed(1);
-              else if (n2 != null) calFinal = n2.toStringAsFixed(1);
-            }
-            final colsExtra = tipoBoletin == '2°C'
-                ? '<td class="td-c">$intDic</td><td class="td-c">$intFeb</td><td class="td-c td-final">$calFinal</td>'
-                : '';
-            filasMaterias.add('''
-              <tr>
-                <td class="td-mat">$nombreMat</td>
-                <td class="td-c">${crs('criterio_apropiacion')}</td>
-                <td class="td-c">${crs('criterio_resolucion')}</td>
-                <td class="td-c">${crs('criterio_participacion')}</td>
-                <td class="td-c">${crs('criterio_planteos')}</td>
-                <td class="td-c">${crs('criterio_entrega')}</td>
-                <td class="td-c">${crs('criterio_prolijidad')}</td>
-                <td class="td-c">${crs('criterio_aic')}</td>
-                <td class="td-c"></td>
-                <td class="td-c td-tray">$riteSeg</td>
-                <td class="td-c td-final">$calSeg</td>
-                <td class="td-c">${crc('criterio_apropiacion')}</td>
-                <td class="td-c">${crc('criterio_resolucion')}</td>
-                <td class="td-c">${crc('criterio_participacion')}</td>
-                <td class="td-c">${crc('criterio_planteos')}</td>
-                <td class="td-c">${crc('criterio_entrega')}</td>
-                <td class="td-c">${crc('criterio_prolijidad')}</td>
-                <td class="td-c">${crc('criterio_aic')}</td>
-                <td class="td-c"></td>
-                <td class="td-c td-tray">$resumenCuat</td>
-                <td class="td-c td-final">$notaCuat</td>
-                $colsExtra
-              </tr>
-            ''');
-          }
-        }
-
-        final tablaMateriaHtml = filasMaterias.join('');
-
-        // Encabezado de tabla según tipo de boletín
-        final String tablaHeader;
-        final String tablaFooter;
-        if (tipoBoletin == 'ANUAL') {
-          tablaHeader = '''
-            <tr>
-              <th rowspan="2" class="th-mat">MATERIA</th>
-              <th colspan="15" class="th-group">CRITERIOS Y CALIFICACIÓN</th>
-            </tr>
-            <tr>
-              <th class="th-r"><span class="rot">Apropiación de los contenidos trabajados</span></th>
-              <th class="th-r"><span class="rot">Resolución de actividades propuestas</span></th>
-              <th class="th-r"><span class="rot">Participación en clases</span></th>
-              <th class="th-r"><span class="rot">Planteos de dudas y sugerencias</span></th>
-              <th class="th-r"><span class="rot">Entrega en tiempo y forma</span></th>
-              <th class="th-r"><span class="rot">Prolijidad y carpeta completa</span></th>
-              <th class="th-r"><span class="rot">Cumplimiento de los AIC*</span></th>
-              <th class="th-r th-inas"><span class="rot">TOTAL INAS.</span></th>
-              <th class="th-r"><span class="rot">RITE 1° ETAPA</span></th>
-              <th class="th-r"><span class="rot">CALIFICACIÓN 1° ETAPA</span></th>
-              <th class="th-r"><span class="rot">RITE 2° ETAPA</span></th>
-              <th class="th-r"><span class="rot">CALIFICACIÓN 2° ETAPA</span></th>
-              <th class="th-r"><span class="rot">INTENS. DICIEMBRE</span></th>
-              <th class="th-r"><span class="rot">INTENS. FEBRERO</span></th>
-              <th class="th-r"><span class="rot">CALIFICACIÓN FINAL</span></th>
-            </tr>''';
-          tablaFooter = '''
-            <tr>
-              <td class="td-foot" colspan="9">TOTAL DE INASISTENCIAS DIARIAS</td>
-              <td class="td-c" colspan="7"></td>
-            </tr>
-            <tr>
-              <td class="td-foot" colspan="16" style="height:28px;">INFORME DE PRECEPTORÍA</td>
-            </tr>''';
-        } else {
-          final labelCuat = tipoBoletin == '1°C' ? '1° CUATRIMESTRE' : '2° CUATRIMESTRE';
-          // Seguimiento: 7 criterios + INAS + RITE + CAL = 10 cols
-          // Cierre:      7 criterios + INAS + RITE + CAL = 10 cols
-          // Extra 2°C: INTENS DIC + INTENS FEB + CAL FINAL = 3 cols
-          final colsExtraHeader = tipoBoletin == '2°C'
-              ? '<th colspan="3" class="th-group">INTENSIFICACIONES</th>'
-              : '';
-          final colsExtraHeader2 = tipoBoletin == '2°C'
-              ? '<th class="th-r"><span class="rot">INTENS. DIC</span></th>'
-                '<th class="th-r"><span class="rot">INTENS. FEB</span></th>'
-                '<th class="th-r"><span class="rot">CAL. FINAL</span></th>'
-              : '';
-          final totalColsCuat = tipoBoletin == '2°C' ? 24 : 21;
-          tablaHeader = '''
-            <tr>
-              <th rowspan="2" class="th-mat">MATERIA</th>
-              <th colspan="10" class="th-group">SEGUIMIENTO — $labelCuat</th>
-              <th colspan="10" class="th-group">CIERRE — $labelCuat</th>
-              $colsExtraHeader
-            </tr>
-            <tr>
-              <th class="th-r th-grp-seg"><span class="rot">Apropiación de los contenidos trabajados</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">Resolución de actividades propuestas</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">Participación en clases</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">Planteos de dudas y sugerencias</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">Entrega en tiempo y forma</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">Prolijidad y carpeta completa</span></th>
-              <th class="th-r th-grp-seg"><span class="rot">Cumplimiento de los AIC*</span></th>
-              <th class="th-r th-grp-seg th-inas"><span class="rot">INAS.</span></th>
-              <th class="th-r th-grp-seg th-cal"><span class="rot">RITE</span></th>
-              <th class="th-r th-grp-seg th-cal"><span class="rot">CAL.</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">Apropiación de los contenidos trabajados</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">Resolución de actividades propuestas</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">Participación en clases</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">Planteos de dudas y sugerencias</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">Entrega en tiempo y forma</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">Prolijidad y carpeta completa</span></th>
-              <th class="th-r th-grp-cie"><span class="rot">Cumplimiento de los AIC*</span></th>
-              <th class="th-r th-grp-cie th-inas"><span class="rot">INAS.</span></th>
-              <th class="th-r th-grp-cie th-cal"><span class="rot">RITE</span></th>
-              <th class="th-r th-grp-cie th-cal"><span class="rot">CAL.</span></th>
-              $colsExtraHeader2
-            </tr>''';
-          tablaFooter = '''
-            <tr>
-              <td class="td-foot" colspan="${totalColsCuat}" style="height:20px;">INFORME DE PRECEPTORÍA</td>
-            </tr>''';
-        }
-
-        boletinesHtml.add('''
-          <div class="boletin-page">
-
-            <!-- ===== ENCABEZADO ===== -->
-            <div class="header-wrap" style="position:relative;">
-              <div class="header-left">
-                <img src="$kLogoBase64" alt="Logo Instituto" style="height:100px; width:auto; object-fit:contain;">
-                <div class="inst-sep"></div>
-                <div class="inst-loc">B&nbsp;A&nbsp;R&nbsp;A&nbsp;D&nbsp;E&nbsp;R&nbsp;O</div>
-              </div>
-              <div class="header-center">BOLETÍN ACADÉMICO</div>
-              <div class="header-right">NIVEL SECUNDARIO</div>
-            </div>
-            <hr class="hr-thin">
-
-            <!-- ===== DATOS DEL ALUMNO ===== -->
-            <div class="alumno-row">
-              <span><span class="lbl">ALUMNO/A:</span>&nbsp;<strong>${alumno.nombre.toUpperCase()}</strong></span>
-              <span><span class="lbl">DNI:</span>&nbsp;<strong>$dni</strong></span>
-              <span><span class="lbl">AÑO:</span>&nbsp;<strong>$identificadorDivision</strong></span>
-            </div>
-
-            <!-- ===== TABLA PRINCIPAL ===== -->
-            <table class="tbl">
-              <thead>
-                $tablaHeader
-              </thead>
-              <tbody>
-                $tablaMateriaHtml
-                $tablaFooter
-              </tbody>
-            </table>
-
-            <!-- ===== FIRMAS ===== -->
-            <div class="firmas">
-              <div class="firma"><div class="firma-linea"></div>Firma Dirección</div>
-              <div class="firma"><div class="firma-linea"></div>Firma Docente / Preceptor</div>
-              <div class="firma"><div class="firma-linea"></div>Firma Madre / Padre / Tutor</div>
-            </div>
-
-            <!-- ===== LEYENDA ===== -->
-            <div class="leyenda">
-              <strong>Apreciaciones:</strong>&nbsp; S: Sobresaliente &ndash; MB: Muy bueno &ndash; B: Bueno &ndash; R: Regular<br>
-              <strong>TEA:</strong> Trayectoria Educativa Avanzada &nbsp;&ndash;&nbsp;
-              <strong>TEP:</strong> Trayectoria Educativa en Proceso &nbsp;&ndash;&nbsp;
-              <strong>TED:</strong> Trayectoria Educativa Discontinua<br>
-              <strong>*AIC:</strong> Acuerdos Institucionales de Convivencia.&nbsp;&nbsp;
-              <strong>*INASISTENCIAS:</strong> Actualización según Resolución 1650/24 Régimen Académico; tardanzas se computará &frac14; de falta, total de inasistencias anuales 28.
-            </div>
-
-            <!-- ===== PIE INSTITUCIONAL ===== -->
-            <div class="pie-inst">
-              DIEGEP 8942 &nbsp;&bull;&nbsp; Jujuy y Saavedra, (2942) Baradero, Buenos Aires, Argentina<br>
-              +54 9 3329 489305 &nbsp;&bull;&nbsp; iabar.educacionadventista.com &nbsp;&bull;&nbsp; instituto.iabar@educacionadventista.org.ar
-            </div>
-
-          </div>
-        ''');
-      }
-
-      final contenidoTotal = boletinesHtml.join('');
-
-      PrintHelper.imprimirHTML(
-        titulo: alumnoEspecifico != null
-            ? 'Boletín - ${alumnoEspecifico.nombre}'
-            : 'Boletín',
-        mostrarEncabezado: false,
-        htmlContentBody: '''
-          <style>
-            @page { size: A4 landscape; margin: 4mm; }
-            * { box-sizing: border-box; }
-            body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #111; margin: 0; padding: 0; }
-
-            .boletin-page {
-              padding: 2mm 3mm;
-              page-break-after: always;
-              background: #fff;
-            }
-
-            /* --- ENCABEZADO --- */
-            .header-wrap {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              margin-bottom: 1px;
-            }
-            .header-left { display: flex; align-items: center; gap: 8px; }
-            .inst-sep { width: 1px; height: 36px; background: #bbb; }
-            .inst-loc { font-size: 10px; letter-spacing: 2px; color: #1565C0; font-weight: bold; }
-            .header-center {
-              position: absolute; left: 50%; transform: translateX(-50%);
-              font-size: 13px; font-weight: bold; color: #111;
-              letter-spacing: 1px;
-            }
-            .header-right { font-size: 14px; font-weight: bold; letter-spacing: 1px; }
-            .hr-thin { border: none; border-top: 1.5px solid #1565C0; margin: 1px 0 3px; }
-
-            /* --- ALUMNO --- */
-            .alumno-row {
-              display: flex;
-              justify-content: flex-end;
-              align-items: center;
-              font-size: 12px;
-              margin-bottom: 3px;
-              gap: 20px;
-            }
-            .lbl { font-weight: bold; }
-
-            /* --- TABLA --- */
-            .tbl {
-              width: 100%;
-              margin: 0;
-              border-collapse: collapse;
-              table-layout: fixed;
-            }
-            .tbl th, .tbl td { border: 1px solid #333; }
-
-            .th-mat {
-              background: #D9E1F2; font-weight: bold;
-              text-align: center; vertical-align: middle;
-              font-size: 10px; padding: 2px 3px;
-              width: 13%;
-            }
-            .th-group {
-              background: #D9E1F2; font-weight: bold;
-              text-align: center; font-size: 10px; padding: 2px;
-            }
-            /* criterio estándar */
-            .th-r {
-              width: 4.2%; padding: 2px 1px;
-              vertical-align: middle; text-align: center;
-              background: #fff;
-            }
-            /* inasistencias: columna angosta */
-            .th-inas { width: 2.8% !important; }
-            /* RITE y CAL: un poco más anchos */
-            .th-cal  { width: 3.8% !important; }
-            .th-grp-seg { background: #E8F4FD; }
-            .th-grp-cie { background: #F0F7EC; }
-            .rot {
-              display: block;
-              font-size: 7.5px;
-              font-weight: bold;
-              white-space: normal;
-              word-break: break-word;
-              line-height: 1.2;
-            }
-
-            .td-mat {
-              text-align: left; font-weight: bold;
-              font-size: 10px; padding: 3px 4px;
-            }
-            .td-c {
-              text-align: center; font-size: 10px;
-              padding: 2px 1px;
-            }
-            .td-tray { font-weight: bold; font-size: 9px; }
-            .td-final { font-weight: bold; font-size: 10px; }
-            .td-foot {
-              background: #f2f2f2; font-weight: bold;
-              font-size: 9.5px; padding: 2px 4px;
-              text-align: left;
-            }
-
-            /* --- FIRMAS --- */
-            .firmas {
-              display: flex;
-              justify-content: space-around;
-              margin-top: 10px;
-              text-align: center;
-              font-size: 11px;
-            }
-            .firma { width: 26%; }
-            .firma-linea {
-              border-top: 1.5px solid #444;
-              margin: 32px 0 4px;
-            }
-
-            /* --- LEYENDA --- */
-            .leyenda {
-              margin-top: 4px;
-              border-top: 1px solid #ccc;
-              padding-top: 2px;
-              font-size: 8.5px;
-              line-height: 1.4;
-            }
-
-            /* --- PIE INSTITUCIONAL --- */
-            .pie-inst {
-              margin-top: 3px;
-              border-top: 1px solid #1565C0;
-              padding-top: 2px;
-              text-align: center;
-              font-size: 8px;
-              color: #444;
-              line-height: 1.5;
-            }
-          </style>
-          $contenidoTotal
-        ''',
+      final error = await BoletinAcademico.imprimir(
+        service: _supabaseService,
+        cursoId: cursoId,
+        alumnos: alumnos,
+        tipoBoletin: tipoBoletin,
       );
+      if (error != null) _mostrarError(error);
     } catch (e) {
       _mostrarError('Error al generar boletín: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   void _imprimirPlanillaCalificaciones() {
     final String subjectName = _materias.firstWhere(
@@ -3132,6 +2668,38 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
       _mergeRubricas(vals, existing);
     } catch (_) {}
 
+    // Nota y RITE (TEA/TEP/TED) de la etapa: lo que el Boletín Académico
+    // imprime como nota de informe (SEGUIMIENTO) o de cuatrimestre (CIERRE).
+    final Map<String, TextEditingController> notaCtrls = {
+      for (final a in _alumnos) a.id: TextEditingController(),
+    };
+    final Map<String, String?> riteEtapa = {};
+
+    Future<void> cargarNotasEtapa(String et) async {
+      riteEtapa.clear();
+      for (final a in _alumnos) {
+        final sug = _calculateLocalRite(a.id);
+        notaCtrls[a.id]!.text = sug != null ? sug.toStringAsFixed(1) : '';
+      }
+      try {
+        final guardados = await _supabaseService.obtenerCierresEtapaPorMateria(
+          materiaId: _selectedMateriaId!,
+          etapa: et,
+        );
+        for (final g in guardados) {
+          final id = g['alumno_id']?.toString();
+          if (id == null || !notaCtrls.containsKey(id)) continue;
+          final n = g['calificacion_numerica'];
+          if (n is num) {
+            notaCtrls[id]!.text = n == n.roundToDouble() ? n.toStringAsFixed(0) : n.toStringAsFixed(1);
+          }
+          riteEtapa[id] = g['condicion_trayectoria']?.toString();
+        }
+      } catch (_) {}
+    }
+
+    await cargarNotasEtapa(etapa);
+
     if (!mounted) return;
 
     final nombreMateria = _materias.firstWhere(
@@ -3162,6 +2730,7 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
               );
               _mergeRubricas(vals, existing);
             } catch (_) {}
+            await cargarNotasEtapa(nueva);
             if (ctx.mounted) setS(() => isLoadingEtapa = false);
           }
 
@@ -3224,7 +2793,26 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                             for (final c in _kCriterios) c['key']!: v[c['key']],
                           };
                         }).toList();
+                        // Validar notas antes de guardar nada.
+                        final cierres = <Map<String, dynamic>>[];
+                        for (final a in _alumnos) {
+                          final txt = notaCtrls[a.id]!.text.trim().replaceAll(',', '.');
+                          final nota = txt.isEmpty ? null : double.tryParse(txt);
+                          if (txt.isNotEmpty && (nota == null || nota < 1 || nota > 10)) {
+                            throw 'La nota de ${a.nombre} debe ser un número entre 1 y 10.';
+                          }
+                          final rite = riteEtapa[a.id];
+                          if (nota == null && (rite == null || rite.isEmpty)) continue;
+                          cierres.add({
+                            'alumno_id': a.id,
+                            'materia_id': _selectedMateriaId!,
+                            'etapa': etapa,
+                            'calificacion_numerica': nota,
+                            'condicion_trayectoria': rite,
+                          });
+                        }
                         await _supabaseService.guardarRubricasCualitativas(payload);
+                        await _supabaseService.guardarCierresEtapa(cierres);
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
                             content: Text('¡Boletín guardado para ${_alumnos.length} alumnos — Etapa: $etapa!'),
@@ -3320,6 +2908,21 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                             textAlign: TextAlign.center),
                                       ),
                                     ),
+                                  DataColumn(
+                                    label: SizedBox(
+                                      width: 70,
+                                      child: Text(
+                                        etapa.contains('SEGUIMIENTO') ? 'NOTA\nINFORME' : 'NOTA\nCUATRIM.',
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                                  const DataColumn(
+                                    label: SizedBox(
+                                      width: 80,
+                                      child: Text('RITE\nEtapa', textAlign: TextAlign.center),
+                                    ),
+                                  ),
                                 ],
                                 rows: List.generate(_alumnos.length, (idx) {
                                   final alumno = _alumnos[idx];
@@ -3371,6 +2974,39 @@ class _PanelCalificacionesState extends State<PanelCalificaciones> {
                                             });
                                           },
                                         )),
+                                      // Nota de la etapa
+                                      DataCell(SizedBox(
+                                        width: 70,
+                                        child: TextField(
+                                          controller: notaCtrls[alumno.id],
+                                          textAlign: TextAlign.center,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                          decoration: const InputDecoration(
+                                            isDense: true,
+                                            hintText: '—',
+                                            border: OutlineInputBorder(),
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                                          ),
+                                        ),
+                                      )),
+                                      // RITE de la etapa
+                                      DataCell(SizedBox(
+                                        width: 80,
+                                        child: DropdownButton<String?>(
+                                          value: riteEtapa[alumno.id],
+                                          isExpanded: true,
+                                          hint: const Text('—'),
+                                          underline: const SizedBox(),
+                                          items: const [
+                                            DropdownMenuItem<String?>(value: null, child: Text('—')),
+                                            DropdownMenuItem<String?>(value: 'TEA', child: Text('TEA')),
+                                            DropdownMenuItem<String?>(value: 'TEP', child: Text('TEP')),
+                                            DropdownMenuItem<String?>(value: 'TED', child: Text('TED')),
+                                          ],
+                                          onChanged: (v) => setS(() => riteEtapa[alumno.id] = v),
+                                        ),
+                                      )),
                                     ],
                                   );
                                 }),

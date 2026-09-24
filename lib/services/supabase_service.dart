@@ -4128,6 +4128,27 @@ class SupabaseService {
     await _client.from('aca_cierres_etapa').upsert(cierre, onConflict: 'alumno_id, materia_id, etapa');
   }
 
+  /// Nota y RITE por etapa (1° SEGUIMIENTO = 1° informe, 1° CIERRE = 1°
+  /// cuatrimestre, etc.) de una materia. Las lee el Boletín Académico.
+  Future<List<Map<String, dynamic>>> obtenerCierresEtapaPorMateria({
+    required String materiaId,
+    required String etapa,
+  }) async {
+    final response = await _client
+        .from('aca_cierres_etapa')
+        .select('alumno_id, calificacion_numerica, condicion_trayectoria')
+        .eq('materia_id', materiaId)
+        .eq('etapa', etapa);
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  Future<void> guardarCierresEtapa(List<Map<String, dynamic>> cierres) async {
+    if (cierres.isEmpty) return;
+    await _client
+        .from('aca_cierres_etapa')
+        .upsert(cierres, onConflict: 'alumno_id, materia_id, etapa');
+  }
+
   // ─── Rúbricas cualitativas por materia/etapa ──────────────────────────────
 
   /// Lee las rúbricas cualitativas guardadas para una materia y etapa concretas.

@@ -32,116 +32,11 @@ class PrintHelper {
     return '${h.day}/${h.month}/${h.year}';
   }
 
-  /// Abre el documento en una pestaña nueva, que dispara el diálogo de
-  /// impresión (desde ahí se guarda como PDF).
-  static void _abrirDocumento(String htmlContent) {
-    final blob = html.Blob([htmlContent], 'text/html;charset=utf-8');
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    html.window.open(url, '_blank');
-    Future.delayed(const Duration(seconds: 10), () {
-      html.Url.revokeObjectUrl(url);
-    });
-  }
-
   static String _esc(Object? v) => (v ?? '')
       .toString()
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;');
-
-  /// Informe de Trayectoria (boletín RITE oficial): lo mismo que muestra la
-  /// vista previa de "Boletines Oficiales", listo para imprimir o guardar en PDF.
-  static void imprimirInformeTrayectoria({
-    required String studentName,
-    required String dni,
-    required String cursoName,
-    required int anioLectivo,
-    required Object? totalInasistencias,
-    required List<Map<String, dynamic>> materias,
-    required List<Map<String, dynamic>> detalles,
-  }) {
-    var filas = '';
-    for (final mat in materias) {
-      final d = detalles.firstWhere(
-        (x) => x['materia_id'] == mat['materia_id'],
-        orElse: () => <String, dynamic>{},
-      );
-      String c(String k) => _esc(d[k]);
-      filas += '''
-        <tr>
-          <td class="mat">${_esc(mat['nombre_asignatura'])}</td>
-          <td>${c('apropiacion_contenidos')}</td>
-          <td>${c('resolucion_actividades')}</td>
-          <td>${c('participacion_clases')}</td>
-          <td>${c('planteos_dudas')}</td>
-          <td>${c('entrega_actividades')}</td>
-          <td>${c('prolijidad_carpeta')}</td>
-          <td>${c('cumplimiento_aic')}</td>
-          <td>${_esc(d['total_inasistencias'] ?? 0)}</td>
-          <td class="b">${c('resumen_1_etapa')}</td>
-          <td class="b">${c('resumen_2_etapa')}</td>
-          <td>${c('intensificacion_dic')}</td>
-          <td>${c('intensificacion_feb')}</td>
-          <td class="b">${c('calificacion_final')}</td>
-        </tr>''';
-    }
-
-    final htmlContent = '''
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Informe de Trayectoria - ${_esc(studentName)}</title>
-        <style>
-          @page { size: A4 landscape; margin: 12mm; }
-          body { font-family: 'Segoe UI', Tahoma, sans-serif; color: #222; margin: 0; }
-          $_cssEncabezado
-          .datos { display: flex; justify-content: space-between; font-size: 13px; background: #f3f6fa; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; }
-          table { width: 100%; border-collapse: collapse; font-size: 11px; }
-          th, td { border: 1px solid #b8c4d4; padding: 5px 4px; text-align: center; }
-          th { background: #003265; color: #fff; font-weight: 600; }
-          td.mat { text-align: left; font-weight: 600; }
-          td.b { font-weight: bold; }
-          .pie { margin-top: 14px; font-size: 11px; line-height: 1.6; border: 1px solid #d5dde8; padding: 8px 12px; border-radius: 6px; }
-          .firmas { margin-top: 40px; display: flex; justify-content: space-around; }
-          .firma { border-top: 1px solid #333; width: 220px; text-align: center; padding-top: 6px; font-size: 12px; }
-          @media print { th { background: #003265 !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-        </style>
-      </head>
-      <body>
-        ${_encabezado('Informe de Trayectoria $anioLectivo')}
-        <div class="datos">
-          <div><strong>Alumno/a:</strong> ${_esc(studentName.toUpperCase())} &nbsp;|&nbsp; <strong>DNI:</strong> ${_esc(dni)} &nbsp;|&nbsp; <strong>Curso:</strong> ${_esc(cursoName)}</div>
-          <div><strong>Total inasistencias:</strong> ${_esc(totalInasistencias ?? 0)} &nbsp;|&nbsp; <strong>Emisión:</strong> ${_fechaHoy()}</div>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Materia</th><th>Apropiación</th><th>Resolución</th><th>Participación</th><th>Dudas</th>
-              <th>Entrega</th><th>Prolijidad</th><th>Cumplimiento AIC</th><th>Inasist.</th>
-              <th>Resumen 1° etapa</th><th>Resumen 2° etapa</th><th>Intensif. dic</th><th>Intensif. feb</th><th>Calif. final</th>
-            </tr>
-          </thead>
-          <tbody>$filas</tbody>
-        </table>
-        <div class="pie">
-          <strong>INFORME DE PRECEPTORÍA</strong><br>
-          Apreciaciones: S: Sobresaliente - MB: Muy bueno - B: Bueno - R: Regular<br>
-          TEA: Trayectoria Educativa Avanzada - TEP: Trayectoria Educativa en Proceso - TED: Trayectoria Educativa Discontinua<br>
-          *AIC: Acuerdos Institucionales de Convivencia.
-        </div>
-        <div class="firmas">
-          <div class="firma">Firma Preceptoría</div>
-          <div class="firma">Sello y Firma Dirección</div>
-          <div class="firma">Firma del Tutor Responsable</div>
-        </div>
-        <script>window.onload = function() { setTimeout(function() { window.print(); }, 300); };</script>
-      </body>
-      </html>
-    ''';
-
-    _abrirDocumento(htmlContent);
-  }
 
   static void imprimirBoletin({
     required String studentName,

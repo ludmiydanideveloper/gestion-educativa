@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/supabase_service.dart';
+import '../services/boletin_academico.dart';
 import '../services/print_helper.dart';
 import '../widgets/brand_widgets.dart';
 import '../widgets/chat_proyecto_dialog.dart';
@@ -589,22 +590,19 @@ class _PanelAdministracionState extends State<PanelAdministracion> with SingleTi
 
     setState(() => _isLoading = true);
     try {
-      final alumnoId = alumno['legajo_id'] as String;
-      
-      final results = await Future.wait([
-        _supabaseService.obtenerCategoriasCalificaciones(),
-        _supabaseService.obtenerCalificacionesAlumno(alumnoId),
-        _supabaseService.fetchMaterias(cursoId: cursoId),
-      ]);
-
-      PrintHelper.imprimirBoletin(
-        studentName: alumno['nombre_completo'] ?? '',
-        dni: alumno['dni']?.toString() ?? '',
-        cursoName: alumno['curso_nombre'] ?? 'Sin curso',
-        categorias: results[0] as List<Map<String, dynamic>>,
-        calificaciones: results[1] as List<Map<String, dynamic>>,
-        materias: results[2] as List<Map<String, dynamic>>,
+      // Mismo Boletín Académico oficial que imprime el docente.
+      final error = await BoletinAcademico.imprimir(
+        service: _supabaseService,
+        cursoId: cursoId,
+        alumnos: [
+          BoletinAlumno(
+            id: alumno['legajo_id'] as String,
+            nombre: alumno['nombre_completo']?.toString() ?? '',
+            dni: alumno['dni']?.toString(),
+          ),
+        ],
       );
+      if (error != null) _mostrarError(error);
     } catch (e) {
       _mostrarError('Error al generar boletín: $e');
     } finally {

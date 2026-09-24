@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
+import '../services/boletin_academico.dart';
 import '../services/print_helper.dart';
 import '../widgets/horario_semanal.dart';
 import '../widgets/brand_widgets.dart';
@@ -1961,16 +1962,29 @@ class _PortalFamiliaState extends State<PortalFamilia> {
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22.0, color: Color(0xFF0F172A)),
               ),
               ElevatedButton.icon(
-                onPressed: () {
-                  PrintHelper.imprimirBoletin(
-                    studentName: hijo['nombre_completo'],
-                    dni: hijo['dni'],
-                    cursoName: hijo['curso_name'],
-                    materias: materias,
-                    calificaciones: calificaciones,
-                    categorias: _categorias,
-                    observaciones: obsTexto,
+                // Mismo Boletín Académico oficial que imprime la escuela.
+                onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  final cursoId = hijo['curso_id']?.toString();
+                  if (cursoId == null || cursoId.isEmpty) {
+                    messenger.showSnackBar(const SnackBar(
+                        content: Text('Tu hijo/a no tiene un curso asignado todavía.')));
+                    return;
+                  }
+                  final error = await BoletinAcademico.imprimir(
+                    service: _supabaseService,
+                    cursoId: cursoId,
+                    alumnos: [
+                      BoletinAlumno(
+                        id: hijo['legajo_id'].toString(),
+                        nombre: hijo['nombre_completo']?.toString() ?? '',
+                        dni: hijo['dni']?.toString(),
+                      ),
+                    ],
                   );
+                  if (error != null) {
+                    messenger.showSnackBar(SnackBar(content: Text(error)));
+                  }
                 },
                 icon: const Icon(Icons.print_rounded),
                 label: const Text('Exportar Boletín'),

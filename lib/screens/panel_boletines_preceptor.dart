@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
 import '../services/print_helper.dart';
+import '../services/boletin_academico.dart';
 
 class PanelBoletinesPreceptor extends StatefulWidget {
   final String? cursoIdInicial;
@@ -160,8 +161,6 @@ class _PanelBoletinesPreceptorState extends State<PanelBoletinesPreceptor> {
   void _abrirVistaPreviaBoletin(Map<String, dynamic> alumno) {
     final alumnoId = alumno['id'] as String;
     final anioLectivo = DateTime.now().year;
-    // [boletín, detalles, materias] una vez cargados; los usa "Descargar".
-    List<dynamic>? datosInforme;
 
     showDialog(
       context: context,
@@ -189,8 +188,7 @@ class _PanelBoletinesPreceptorState extends State<PanelBoletinesPreceptor> {
                   boletin['boletin_id'] as String,
                   alumnoId: alumnoId,
                 );
-                datosInforme = [boletin, detalles, results[1]];
-                return datosInforme!;
+                return [boletin, detalles, results[1]];
               }),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -338,25 +336,24 @@ class _PanelBoletinesPreceptorState extends State<PanelBoletinesPreceptor> {
               child: const Text('Cerrar'),
             ),
             ElevatedButton.icon(
-              // Se habilita cuando la vista previa terminó de cargar: el PDF usa
-              // exactamente esos datos, y se abre sin esperas para que el
-              // navegador no bloquee la ventana nueva.
-              onPressed: () {
-                final datos = datosInforme;
-                if (datos == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('Esperá a que termine de cargar el boletín.')));
-                  return;
-                }
-                PrintHelper.imprimirInformeTrayectoria(
-                  studentName: alumno['nombre']?.toString() ?? '',
-                  dni: alumno['dni']?.toString() ?? '',
-                  cursoName: alumno['curso_nombre']?.toString() ?? '',
-                  anioLectivo: anioLectivo,
-                  totalInasistencias: (datos[0] as Map<String, dynamic>)['total_inasistencias_diarias'],
-                  detalles: datos[1] as List<Map<String, dynamic>>,
-                  materias: datos[2] as List<Map<String, dynamic>>,
+              // Mismo Boletín Académico que imprime el docente (todas las
+              // materias del curso, notas de informe y de cuatrimestre).
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final error = await BoletinAcademico.imprimir(
+                  service: _service,
+                  cursoId: _selectedCursoId!,
+                  alumnos: [
+                    BoletinAlumno(
+                      id: alumnoId,
+                      nombre: alumno['nombre']?.toString() ?? '',
+                      dni: alumno['dni']?.toString(),
+                    ),
+                  ],
                 );
+                if (error != null) {
+                  messenger.showSnackBar(SnackBar(content: Text(error)));
+                }
               },
               icon: const Icon(Icons.download_rounded),
               label: const Text('Descargar Informe (PDF)'),
